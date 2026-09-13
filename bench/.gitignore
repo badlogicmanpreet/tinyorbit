@@ -1,0 +1,7 @@
+.stage/
+transcripts/
+patches/
+predictions.jsonl
+results.csv
+logs/
+.venv/

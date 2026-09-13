@@ -1,0 +1,13 @@
+.DS_Store
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+.tinyorbit/
+
+# benchmark artifacts (bench/.gitignore covers the rest)
+bench/.stage/
+
+# the book, its site, and its GitHub Pages deploy workflow live in a separate repo
+content/
+.github/workflows/deploy.yml

@@ -1,0 +1,11 @@
+You are working in a git checkout of {repo} at /testbed. Below is a GitHub issue filed against this repository.
+
+<issue>
+{problem_statement}
+</issue>
+
+Fix the issue. Requirements:
+- Make the smallest change that resolves the issue. Do not refactor unrelated code.
+- Find and run the existing tests that cover the affected code, and confirm they pass after your change. Add a test only if it is clearly needed to verify the fix.
+- Do not commit. Leave the changes in the working tree.
+- When you are done, summarize in a few sentences what you changed and why.

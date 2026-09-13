@@ -99,6 +99,7 @@ class QueryParams:
     max_turns: int | None = None
     effort: str | None = None
     fallbacks: bool = True
+    thinking_display: str = "omitted"
 
 
 CompactFn = Callable[["QueryParams", list[Any]], Awaitable[list[Any]]]
@@ -213,6 +214,7 @@ async def query(params: QueryParams, deps: QueryDeps | None = None) -> AsyncIter
             max_tokens=state.max_tokens_override or DEFAULT_MAX_TOKENS,
             effort=params.effort,
             fallbacks=params.fallbacks,
+            thinking_display=params.thinking_display,
         )
         response = None
         try:

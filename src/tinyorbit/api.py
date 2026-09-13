@@ -13,7 +13,11 @@ as ModelCallError with a `reason` the loop switches on. Everything else is
 from __future__ import annotations
 
 import asyncio
+import itertools
+import json
+import os
 import random
+import time
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator
 
@@ -35,6 +39,7 @@ class ModelRequest:
     max_tokens: int = DEFAULT_MAX_TOKENS
     effort: str | None = None
     fallbacks: bool = True          # server-side refusal fallback (Opus 5 / Fable 5.1)
+    thinking_display: str = "omitted"   # "summarized" returns readable reasoning; see below
 
 
 # ── events ──────────────────────────────────────────────────────────────────
@@ -97,6 +102,84 @@ async def _sleep_unless_aborted(seconds: float, abort: asyncio.Event) -> bool:
         return False
 
 
+# ── stream tracing ──────────────────────────────────────────────────────────
+# Observable transport: set TINYORBIT_TRACE=<path> to append one JSON line per
+# SSE event, with a millisecond offset from the request. Off by default, so the
+# streaming hot path allocates nothing extra in normal use.
+
+_TRACE_FH = None
+_CALL_SEQ = itertools.count(1)
+
+
+def _trace(kind: str, **fields: Any) -> None:
+    global _TRACE_FH
+    path = os.environ.get("TINYORBIT_TRACE")
+    if not path:
+        return
+    if _TRACE_FH is None:
+        _TRACE_FH = open(path, "a", buffering=1)
+    _TRACE_FH.write(json.dumps({"kind": kind, "wall": round(time.time(), 4), **fields}, default=str) + "\n")
+
+
+def _shape(messages: list[Any]) -> list[dict]:
+    """What the harness is about to resend: every message as role + block types + sizes."""
+    out = []
+    for m in messages:
+        role = m["role"] if isinstance(m, dict) else getattr(m, "role", "?")
+        content = m["content"] if isinstance(m, dict) else getattr(m, "content", "")
+        if isinstance(content, str):
+            out.append({"role": role, "blocks": [{"type": "text", "chars": len(content)}]})
+            continue
+        blocks = []
+        for b in content:
+            bt = b.get("type") if isinstance(b, dict) else getattr(b, "type", "?")
+            entry: dict[str, Any] = {"type": bt}
+            if bt in ("text", "thinking"):
+                val = (b.get(bt) if isinstance(b, dict) else getattr(b, bt, "")) or ""
+                entry["chars"] = len(val)
+            elif bt == "tool_use":
+                entry["name"] = b.get("name") if isinstance(b, dict) else getattr(b, "name", "")
+            elif bt == "tool_result":
+                val = b.get("content") if isinstance(b, dict) else getattr(b, "content", "")
+                entry["chars"] = len(str(val))
+            blocks.append(entry)
+        out.append({"role": role, "blocks": blocks})
+    return out
+
+
+def _event_detail(event: Any) -> dict:
+    """Pull the few fields that make an SSE event legible, defensively."""
+    d: dict[str, Any] = {}
+    block = getattr(event, "content_block", None)
+    if block is not None:
+        d["block"] = getattr(block, "type", None)
+        if getattr(block, "name", None):
+            d["name"] = block.name
+    delta = getattr(event, "delta", None)
+    if delta is not None:
+        dt = getattr(delta, "type", None)
+        if dt:
+            d["delta"] = dt
+        for attr in ("text", "thinking", "partial_json"):
+            val = getattr(delta, attr, None)
+            if val:
+                d["chars"] = len(val)
+                d["text"] = val          # replayable: the trace can reconstruct the stream
+        if getattr(delta, "stop_reason", None):
+            d["stop_reason"] = delta.stop_reason
+    usage = getattr(event, "usage", None) or getattr(getattr(event, "message", None), "usage", None)
+    if usage is not None:
+        d["usage"] = {
+            "input": getattr(usage, "input_tokens", None),
+            "cache_read": getattr(usage, "cache_read_input_tokens", None),
+            "cache_write": getattr(usage, "cache_creation_input_tokens", None),
+            "output": getattr(usage, "output_tokens", None),
+        }
+    if getattr(event, "index", None) is not None:
+        d["index"] = event.index
+    return d
+
+
 # ── the call ────────────────────────────────────────────────────────────────
 
 async def _stream_once(
@@ -107,7 +190,10 @@ async def _stream_once(
         max_tokens=req.max_tokens,
         system=req.system,
         messages=req.messages,
-        thinking={"type": "adaptive"},
+        # Adaptive thinking: the model decides when and how deeply to think. The
+        # raw chain of thought is never returned; display picks between an empty
+        # placeholder block ("omitted", the API default) and a readable summary.
+        thinking={"type": "adaptive", "display": req.thinking_display},
         cache_control={"type": "ephemeral"},   # auto-cache the last cacheable block
     )
     if req.tools:
@@ -120,8 +206,21 @@ async def _stream_once(
     else:
         stream_ctx = client.messages.stream(**kwargs)
 
+    call = next(_CALL_SEQ)
+    started = time.perf_counter()
+    _trace(
+        "request", call=call, model=req.model, max_tokens=req.max_tokens,
+        effort=req.effort, thinking_display=req.thinking_display, fallbacks=req.fallbacks,
+        n_messages=len(req.messages), n_tools=len(req.tools),
+        tools=[t.get("name") for t in req.tools],
+        system=[{"chars": len(b.get("text", "")), "cached": "cache_control" in b} for b in req.system],
+        history=_shape(req.messages),
+    )
+
     async with stream_ctx as stream:
         async for event in stream:
+            _trace("event", call=call, t=round((time.perf_counter() - started) * 1000, 1),
+                   type=getattr(event, "type", "?"), **_event_detail(event))
             if abort.is_set():
                 # Leaving the context manager closes the HTTP stream.
                 raise ModelCallError("aborted", "interrupted while streaming")
@@ -132,6 +231,21 @@ async def _stream_once(
                 elif delta.type == "thinking_delta" and delta.thinking:
                     yield ThinkingDelta(delta.thinking)
         message = await stream.get_final_message()
+    _trace(
+        "response", call=call, t=round((time.perf_counter() - started) * 1000, 1),
+        stop_reason=message.stop_reason, model=getattr(message, "model", None),
+        blocks=[
+            {"type": b.type, "chars": len(getattr(b, b.type, "") or "") if b.type in ("text", "thinking") else None,
+             "name": getattr(b, "name", None), "signature": bool(getattr(b, "signature", None))}
+            for b in message.content
+        ],
+        usage={
+            "input": message.usage.input_tokens,
+            "cache_read": getattr(message.usage, "cache_read_input_tokens", 0),
+            "cache_write": getattr(message.usage, "cache_creation_input_tokens", 0),
+            "output": message.usage.output_tokens,
+        },
+    )
     yield ModelResponse(message)
 
 

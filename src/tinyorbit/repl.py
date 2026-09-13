@@ -10,6 +10,7 @@ cleanly while Ctrl+C mid-turn just sets the abort flag.
 from __future__ import annotations
 
 import asyncio
+import os
 import signal
 import sys
 from pathlib import Path
@@ -95,6 +96,7 @@ async def run_turn(config: "Config", session: SessionState, ctx: ToolUseContext,
         max_turns=config.max_turns,
         effort=config.effort,
         fallbacks=config.fallbacks,
+        thinking_display=config.thinking_display,
     )
     renderer = Renderer()
     final_text = ""
@@ -130,7 +132,33 @@ def run_print_mode(config: "Config") -> int:
     asyncio.run(main())
     print()
     print(_paint(DIM, session.cost.summary(config.model)), file=sys.stderr)
+    # Harness hook: a benchmark runner sets TINYORBIT_TRANSCRIPT to get the full
+    # message history and cost ledger as JSON, since stdout only shows a
+    # truncated rendering of tool calls and results.
+    if path := os.environ.get("TINYORBIT_TRANSCRIPT"):
+        _dump_transcript(Path(path), config, session)
     return 0
+
+
+def _dump_transcript(path: Path, config: "Config", session: SessionState) -> None:
+    import json
+    from dataclasses import asdict
+
+    def default(o: object) -> object:
+        return o.model_dump() if hasattr(o, "model_dump") else str(o)
+
+    payload = {
+        "session_id": session.session_id,
+        "model": config.model,
+        "effort": config.effort,
+        "max_turns": config.max_turns,
+        "permission_mode": config.permission_mode.value,
+        "turns": session.turns,
+        "cost": asdict(session.cost),
+        "estimated_usd": session.cost.estimate_usd(config.model),
+        "messages": session.messages,
+    }
+    path.write_text(json.dumps(payload, indent=1, default=default))
 
 
 # ── interactive ─────────────────────────────────────────────────────────────

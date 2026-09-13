@@ -11,3 +11,6 @@ bench/.stage/
 # the book, its site, and its GitHub Pages deploy workflow live in a separate repo
 content/
 .github/workflows/deploy.yml
+
+# local secrets
+key.txt

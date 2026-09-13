@@ -37,6 +37,7 @@ class Config:
     allow_rules: list[str] = field(default_factory=list)
     effort: str | None = None
     fallbacks: bool = True
+    thinking_display: str = "omitted"
     max_turns: int | None = None
     data_dir: Path = Path.home() / ".tinyorbit"
     capabilities: dict = field(default_factory=dict)
@@ -57,6 +58,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="permission rule, e.g. 'Bash(git status*)' or 'Edit'")
     parser.add_argument("--effort", default=None, choices=["low", "medium", "high", "xhigh", "max"])
     parser.add_argument("--no-fallbacks", dest="fallbacks", action="store_false")
+    parser.add_argument("--thinking-display", default="omitted", choices=["omitted", "summarized"],
+                        help="'summarized' streams the model's reasoning summary; default omits it")
     parser.add_argument("--max-turns", type=int, default=None)
     return parser
 
@@ -77,6 +80,7 @@ def init(argv: list[str]) -> Config:
         allow_rules=list(args.allow),
         effort=args.effort,
         fallbacks=args.fallbacks,
+        thinking_display=args.thinking_display,
         max_turns=args.max_turns,
     )
 

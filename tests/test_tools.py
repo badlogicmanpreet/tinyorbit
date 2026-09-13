@@ -3,8 +3,6 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-import pytest
-
 from tinyorbit.permissions import PermissionMode, PermissionPolicy, rule_matches
 from tinyorbit.tools import ToolCall, ToolUseContext, check_schema, get_all_base_tools, run_tool
 from tinyorbit.tools.bash_tool import BashTool, classify_read_only

@@ -68,7 +68,7 @@ def main(argv: list[str] | None = None) -> int:
     # Heavy imports start here, AFTER the fast path. This is Python's
     # rough equivalent of the JS "module-level I/O" trick — we just
     # don't pay the import cost on `--version` or `--help`.
-    from tinyorbit.bootstrap import init, setup, launch
+    from tinyorbit.bootstrap import init, launch, setup
 
     # Phase 2: parse args, resolve config, trust boundary.
     config = init(argv[1:])

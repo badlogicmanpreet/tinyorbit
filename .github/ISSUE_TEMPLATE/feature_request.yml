@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest a capability or a change in behaviour
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        tinyorbit stays small on purpose. Proposals that keep the loop readable and add no third-party
+        dependency have the best chance. Some capabilities are known gaps rather than oversights:
+        sub-agents, hooks, MCP, and the lighter context-management layers all have slots in
+        `Config.capabilities` and no implementation yet.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that you cannot do today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach
+      description: How might it work? Which module would own it?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

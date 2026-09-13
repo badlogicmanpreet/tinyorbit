@@ -306,7 +306,9 @@ async def query(params: QueryParams, deps: QueryDeps | None = None) -> AsyncIter
             for call in group:
                 yield ToolStarted(call, _find_tool_summary(params.tools, call))
             group_results = await asyncio.gather(*(run_tool(c, params.tools, ctx) for c in group))
-            for call, result in zip(group, group_results):
+            # strict=True asserts the invariant the API protocol needs: gather returns
+            # exactly one result per call, so no tool_use can go unanswered.
+            for call, result in zip(group, group_results, strict=True):
                 yield ToolFinished(call, result)
             results.extend(group_results)
 

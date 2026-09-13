@@ -6,13 +6,10 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
-
 from tinyorbit.api import ModelCallError, ModelResponse, StatusEvent
 from tinyorbit.permissions import PermissionMode, PermissionPolicy
 from tinyorbit.query import Done, QueryDeps, QueryParams, ToolFinished, ToolStarted, query
 from tinyorbit.tools import ToolUseContext, get_all_base_tools
-
 
 # ── fakes ───────────────────────────────────────────────────────────────────
 

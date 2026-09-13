@@ -133,3 +133,19 @@ Three frozen task sets ship here so runs are reproducible: `tasks-easy10.json` (
   bench/                   # SWE-bench runner: run.py, prompt.txt, frozen task sets
   reports/                 # HTML write-ups of the benchmark runs, and their data
 ```
+
+## Contributing
+
+Setup, the constraints this project holds itself to, and how the tests work are in
+[CONTRIBUTING.md](CONTRIBUTING.md). In short: `uv sync --group dev`, then `uv run pytest` and
+`uv run ruff check .`. Neither needs an API key or network access.
+
+## Security
+
+tinyorbit edits files and runs shell commands with arguments chosen by a language model. Before
+running it anywhere that matters, and especially before using `--permission-mode bypassPermissions`,
+read [SECURITY.md](SECURITY.md) for the trust model and how to report a vulnerability privately.
+
+## License
+
+[MIT](LICENSE). Copyright (c) 2026 badlogicmanpreet.

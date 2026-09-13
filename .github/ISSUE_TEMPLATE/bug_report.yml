@@ -1,0 +1,56 @@
+name: Bug report
+description: Something the agent or the harness does wrong
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. If the issue has a security dimension, please read SECURITY.md and
+        report it privately instead of here.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what happened, and what you expected instead.
+      placeholder: |
+        Command: uv run python main.py --print "..."
+        Expected: ...
+        Got: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Smallest set of steps that shows the problem. A scratch directory is ideal.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Permission mode
+      options: ["default", "acceptEdits", "bypassPermissions", "not relevant"]
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Commit SHA or tag, plus your Python version and OS.
+      placeholder: "25d9e9c, Python 3.13, macOS 26.6"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output
+      description: |
+        Relevant terminal output or a trace. Setting TINYORBIT_TRACE=<path> records one JSON line per
+        stream event, which is often the fastest way to see what the loop did.
+        Please redact anything sensitive; never paste an API key.
+      render: shell

@@ -1,8 +1,8 @@
 # tinyorbit — A Small Terminal Coding Agent in Python
 
-A from-scratch Python coding agent, built alongside the book in [content/book/](content/book/). It is real and runnable: you type a request, it calls the model, runs tools (read/write/edit/bash/glob/grep), and loops until the model stops asking for tools.
+A from-scratch Python coding agent. It is real and runnable: you type a request, it calls the model, runs tools (read/write/edit/bash/glob/grep), and loops until the model stops asking for tools.
 
-Roughly 1,100 lines. Every module maps to a chapter; every non-obvious design choice has a comment pointing at the pattern it demonstrates. [notes.md](notes.md) is a guided walkthrough.
+Roughly 1,100 lines. Every non-obvious design choice has a comment pointing at the pattern it demonstrates. [notes.md](notes.md) is a guided walkthrough.
 
 ## Running
 
@@ -22,21 +22,21 @@ Defaults: model `claude-opus-5`, adaptive thinking, server-side refusal fallback
 
 ## The abstractions (mapped to modules)
 
-| Book concept        | Module                        | Chapter | What it demonstrates |
-|---------------------|-------------------------------|---------|----------------------|
-| Bootstrap           | `src/tinyorbit/bootstrap.py`      | 2       | init → setup → launch; the trust boundary gates reading project files |
-| CLI entry           | `main.py`                     | 2       | fast path for `--version`/`--help` before heavy imports |
-| State               | `src/tinyorbit/state.py`          | 3       | session ledger: messages, cost tracker, context size |
-| API layer           | `src/tinyorbit/api.py`            | 4       | streaming, yield-based retry, cache breakpoints, recoverable-error classification |
-| System prompt       | `src/tinyorbit/prompt.py`         | 4       | static cached prefix / dynamic boundary |
-| Query loop          | `src/tinyorbit/query.py`          | 5       | async generator; explicit state reconstruction; terminal vs continue reasons |
-| Tool system         | `src/tinyorbit/tools/`            | 6       | self-describing tools, fail-closed defaults, input-dependent safety, staleness detection, result budgeting |
-| Permissions         | `src/tinyorbit/permissions.py`    | 6       | the resolution chain: bypass → rules → read-only → mode → ask |
-| Concurrency         | `src/tinyorbit/tools/execute.py`  | 7       | consecutive concurrency-safe calls run under `asyncio.gather` |
-| Memory              | `src/tinyorbit/memory.py`         | 11      | TINYORBIT.md / AGENTS.md from home and every ancestor of cwd |
-| REPL / print mode   | `src/tinyorbit/repl.py`           | 13      | event rendering, Ctrl+C as abort signal, permission prompts |
+| Concept             | Module                        | What it demonstrates |
+|---------------------|-------------------------------|----------------------|
+| Bootstrap           | `src/tinyorbit/bootstrap.py`      | init → setup → launch; the trust boundary gates reading project files |
+| CLI entry           | `main.py`                     | fast path for `--version`/`--help` before heavy imports |
+| State               | `src/tinyorbit/state.py`          | session ledger: messages, cost tracker, context size |
+| API layer           | `src/tinyorbit/api.py`            | streaming, yield-based retry, cache breakpoints, recoverable-error classification |
+| System prompt       | `src/tinyorbit/prompt.py`         | static cached prefix / dynamic boundary |
+| Query loop          | `src/tinyorbit/query.py`          | async generator; explicit state reconstruction; terminal vs continue reasons |
+| Tool system         | `src/tinyorbit/tools/`            | self-describing tools, fail-closed defaults, input-dependent safety, staleness detection, result budgeting |
+| Permissions         | `src/tinyorbit/permissions.py`    | the resolution chain: bypass → rules → read-only → mode → ask |
+| Concurrency         | `src/tinyorbit/tools/execute.py`  | consecutive concurrency-safe calls run under `asyncio.gather` |
+| Memory              | `src/tinyorbit/memory.py`         | TINYORBIT.md / AGENTS.md from home and every ancestor of cwd |
+| REPL / print mode   | `src/tinyorbit/repl.py`           | event rendering, Ctrl+C as abort signal, permission prompts |
 
-Not built yet (slots exist in `Config.capabilities`): sub-agents (Ch 8), hooks (Ch 12), MCP (Ch 15), the lighter context-management layers (Ch 5: snip/microcompact/collapse). Only auto-compact and reactive compact exist.
+Not built yet (slots exist in `Config.capabilities`): sub-agents, hooks, MCP, the lighter context-management layers (snip/microcompact/collapse). Only auto-compact and reactive compact exist.
 
 ## The loop in one screen
 
@@ -60,7 +60,7 @@ Every `Done` carries the message history, so the caller (REPL or --print) never 
 
 ## Testing strategy
 
-`QueryDeps` is the injection seam from Chapter 5. Tests pass a scripted `call_model` (a list of canned responses or exceptions) and a fake `compact`, then assert on the event sequence and on the exact request messages the loop would have sent. Tool tests run against a temp directory with real subprocesses.
+`QueryDeps` is the injection seam. Tests pass a scripted `call_model` (a list of canned responses or exceptions) and a fake `compact`, then assert on the event sequence and on the exact request messages the loop would have sent. Tool tests run against a temp directory with real subprocesses.
 
 `bench/` runs tinyorbit against a five-instance sample of SWE-bench Verified. See the last section of [notes.md](notes.md).
 
@@ -83,5 +83,4 @@ Every `Done` carries the message history, so the caller (REPL or --print) never 
     test_query.py          # loop behaviour with a scripted model
     test_tools.py          # tools, permissions, budgeting
   bench/                   # SWE-bench runner: run.py, prompt.txt, tasks.json
-  content/                 # the book, its prompts, and the web site
 ```

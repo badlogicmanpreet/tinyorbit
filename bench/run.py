@@ -12,6 +12,7 @@ take `git diff` from /testbed, append a prediction line, remove the container.
 Outputs (all under bench/):
     transcripts/<id>.out      agent stdout (streamed text + tool activity)
     transcripts/<id>.err      agent stderr (cost line, tracebacks)
+    transcripts/<id>.messages.json   full message history + token/cost ledger
     patches/<id>.diff         the model_patch
     predictions.jsonl         one line per task, swebench format
     results.csv               one row per task: turns, exit reason, cost, seconds, diff size
@@ -37,25 +38,33 @@ HERE = Path(__file__).resolve().parent
 TINYORBIT_SRC = HERE.parent                       # python-impl/
 STAGE = HERE / ".stage" / "tinyorbit"             # copy without .venv, bench, caches
 CONTAINER_APP = "/opt/tinyorbit"
+CONTAINER_TRANSCRIPT = "/tmp/tinyorbit-transcript.json"   # full message history, copied out per task
+CONTAINER_TRACE = "/tmp/tinyorbit-trace.jsonl"           # one JSON line per SSE event, when --trace
 UV = "/root/.local/bin/uv"
 PLATFORM = "linux/amd64"                          # SWE-bench images are x86_64
-TASK_TIMEOUT_S = 45 * 60
+DEFAULT_TIMEOUT_MIN = 45
 COST_RE = re.compile(r"(\d+) API calls .*?~\$([\d.]+)")
 ENDED_RE = re.compile(r"\[turn ended: (\w+)\]")
 
 
 def sh(cmd: list[str], *, dry: bool, check: bool = True, capture: bool = False, timeout: float | None = None, input_text: str | None = None) -> subprocess.CompletedProcess:
-    print("  $", " ".join(c if len(c) < 80 else c[:77] + "..." for c in cmd), flush=True)
+    shown = [_redact(c) for c in cmd]
+    print("  $", " ".join(c if len(c) < 80 else c[:77] + "..." for c in shown), flush=True)
     if dry:
         return subprocess.CompletedProcess(cmd, 0, "", "")
     return subprocess.run(cmd, check=check, text=True, capture_output=capture, timeout=timeout, input=input_text)
+
+
+def _redact(arg: str) -> str:
+    # never let a credential reach the run log
+    return re.sub(r"(ANTHROPIC_API_KEY=)\S+", r"\1<redacted>", arg)
 
 
 def stage_source() -> Path:
     """Copy python-impl into a clean directory so docker cp does not drag .venv along."""
     if STAGE.exists():
         shutil.rmtree(STAGE)
-    ignore = shutil.ignore_patterns(".venv", "bench", "content", ".git", ".github", "__pycache__", ".pytest_cache", ".DS_Store", "notes.md", ".tinyorbit")
+    ignore = shutil.ignore_patterns(".venv", "bench", "content", ".git", ".github", "__pycache__", ".pytest_cache", ".DS_Store", "notes.md", ".tinyorbit", "key.txt", ".env")
     shutil.copytree(TINYORBIT_SRC, STAGE, ignore=ignore)
     return STAGE
 
@@ -83,13 +92,16 @@ def install_tinyorbit(name: str, dry: bool) -> None:
 
 def run_agent(name: str, prompt: str, args: argparse.Namespace, out_path: Path, err_path: Path) -> tuple[float, bool]:
     cmd = [
-        "docker", "exec", "-w", "/testbed", name,
+        "docker", "exec", "-w", "/testbed", "-e", f"TINYORBIT_TRANSCRIPT={CONTAINER_TRANSCRIPT}",
+        *(["-e", f"TINYORBIT_TRACE={CONTAINER_TRACE}"] if args.trace else []), name,
         UV, "run", "--project", CONTAINER_APP, "python", f"{CONTAINER_APP}/main.py",
         "--print", "--permission-mode", "bypassPermissions",
         "--max-turns", str(args.max_turns), "--model", args.model,
     ]
     if args.effort:
         cmd += ["--effort", args.effort]
+    if args.thinking_display != "omitted":
+        cmd += ["--thinking-display", args.thinking_display]
     if not args.fallbacks:
         cmd += ["--no-fallbacks"]
     cmd.append(prompt)
@@ -100,11 +112,18 @@ def run_agent(name: str, prompt: str, args: argparse.Namespace, out_path: Path, 
     timed_out = False
     with out_path.open("w") as out, err_path.open("w") as err:
         try:
-            subprocess.run(cmd, stdout=out, stderr=err, text=True, timeout=TASK_TIMEOUT_S)
+            subprocess.run(cmd, stdout=out, stderr=err, text=True, timeout=args.timeout_min * 60)
         except subprocess.TimeoutExpired:
             timed_out = True
             subprocess.run(["docker", "exec", name, "pkill", "-f", "main.py"], capture_output=True)
     return time.monotonic() - started, timed_out
+
+
+def collect_transcript(name: str, dest: Path, dry: bool) -> None:
+    """Full message history + cost ledger; missing if the agent crashed before exit."""
+    if dry:
+        return
+    subprocess.run(["docker", "cp", f"{name}:{CONTAINER_TRANSCRIPT}", str(dest)], capture_output=True)
 
 
 def collect_patch(name: str, dry: bool) -> str:
@@ -136,6 +155,10 @@ def main() -> int:
     ap.add_argument("--max-turns", type=int, default=60)
     ap.add_argument("--no-fallbacks", dest="fallbacks", action="store_false")
     ap.add_argument("--keep", action="store_true", help="leave containers running for inspection")
+    ap.add_argument("--tasks", default=str(HERE / "tasks.json"), help="task file (default bench/tasks.json)")
+    ap.add_argument("--timeout-min", type=int, default=DEFAULT_TIMEOUT_MIN, help="per-task wall-clock cap")
+    ap.add_argument("--thinking-display", default="omitted", choices=["omitted", "summarized"])
+    ap.add_argument("--trace", action="store_true", help="record every SSE event to transcripts/<id>.trace.jsonl")
     args = ap.parse_args()
 
     api_key = None if args.smoke else os.environ.get("ANTHROPIC_API_KEY")
@@ -143,7 +166,7 @@ def main() -> int:
         print("ANTHROPIC_API_KEY is not set", file=sys.stderr)
         return 2
 
-    tasks = json.loads((HERE / "tasks.json").read_text())
+    tasks = json.loads(Path(args.tasks).read_text())
     if args.only:
         tasks = [t for t in tasks if t["instance_id"] in args.only]
     if args.smoke:
@@ -165,6 +188,10 @@ def main() -> int:
             start_container(name, task["image"], api_key, args.dry_run)
             install_tinyorbit(name, args.dry_run)
             seconds, timed_out = run_agent(name, render_prompt(task), args, out_path, err_path)
+            collect_transcript(name, HERE / "transcripts" / f"{iid}.messages.json", args.dry_run)
+            if args.trace and not args.dry_run:
+                subprocess.run(["docker", "cp", f"{name}:{CONTAINER_TRACE}",
+                                str(HERE / "transcripts" / f"{iid}.trace.jsonl")], capture_output=True)
             patch = collect_patch(name, args.dry_run)
         finally:
             if not args.keep:

@@ -16,7 +16,7 @@ uv run python main.py --print "list the python files here"   # headless, streams
 uv run pytest                                      # 24 tests, no network
 ```
 
-Useful flags: `--model`, `--permission-mode {default,acceptEdits,bypassPermissions}`, `--allow 'Bash(git *)'`, `--effort xhigh`, `--max-turns 20`, `--no-fallbacks`. Inside the REPL: `/cost`, `/clear`, `/mode`, `/exit`. Ctrl+C mid-turn interrupts the turn; at the prompt it exits.
+Useful flags: `--model`, `--permission-mode {default,acceptEdits,bypassPermissions}`, `--allow 'Bash(git *)'`, `--effort xhigh`, `--max-turns 20`, `--no-fallbacks`, `--thinking-display summarized`. Inside the REPL: `/cost`, `/clear`, `/mode`, `/exit`. Ctrl+C mid-turn interrupts the turn; at the prompt it exits.
 
 Defaults: model `claude-opus-5`, adaptive thinking, server-side refusal fallback on, prompt caching on, permission mode `default` (read-only tools run freely, writes and shell commands prompt).
 
@@ -62,7 +62,9 @@ Every `Done` carries the message history, so the caller (REPL or --print) never 
 
 `QueryDeps` is the injection seam. Tests pass a scripted `call_model` (a list of canned responses or exceptions) and a fake `compact`, then assert on the event sequence and on the exact request messages the loop would have sent. Tool tests run against a temp directory with real subprocesses.
 
-`bench/` runs tinyorbit against a five-instance sample of SWE-bench Verified. See the last section of [notes.md](notes.md).
+`bench/` runs tinyorbit against SWE-bench Verified instances, one container per task. See the last
+section of [notes.md](notes.md) for the method, and [reports/](reports/) for two write-ups: results
+across twenty instances, and one task traced at the wire with every stream event recorded.
 
 ## Layout
 
@@ -82,5 +84,6 @@ Every `Done` carries the message history, so the caller (REPL or --print) never 
   tests/
     test_query.py          # loop behaviour with a scripted model
     test_tools.py          # tools, permissions, budgeting
-  bench/                   # SWE-bench runner: run.py, prompt.txt, tasks.json
+  bench/                   # SWE-bench runner: run.py, prompt.txt, frozen task sets
+  reports/                 # HTML write-ups of the benchmark runs, and their data
 ```

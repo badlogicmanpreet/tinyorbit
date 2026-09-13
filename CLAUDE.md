@@ -11,7 +11,8 @@
   main.py                 # tinyorbit CLI entry
   src/tinyorbit/          # the agent: bootstrap, query loop, api, tools, permissions, memory, repl
   tests/                  # pytest, scripted model, no network
-  bench/                  # SWE-bench Verified runner (5-instance sample), own venv
+  bench/                  # SWE-bench Verified runner + frozen task sets, own venv
+  reports/                # committed deliverables: HTML reports and the data they embed
   pyproject.toml          # uv project, Python 3.11+, anthropic SDK
   notes.md                # walkthrough notes on how tinyorbit works
   README.md               # tinyorbit readme
@@ -24,7 +25,11 @@
 - Do not describe tinyorbit as a clone or copy of any product in code, docstrings, or README.
 - Every non-obvious design choice gets a short comment naming the pattern it demonstrates.
 - Tests use the `QueryDeps` injection seam with a scripted model. Never add tests that need network.
-- Do not commit `bench/` outputs (transcripts, patches, predictions, results).
+- Do not commit `bench/` outputs (transcripts, patches, predictions, results). Run records live in
+  `bench/logs/<run-id>/` and stay local. Finished write-ups go in `reports/`, which is committed.
+- Observability is opt-in and costs nothing when off: `TINYORBIT_TRACE=<path>` appends one JSON line
+  per stream event, and `--thinking-display summarized` returns the model's reasoning instead of the
+  API's default empty placeholder blocks. Leave both defaults alone so benchmark runs stay comparable.
 
 ## Git
 

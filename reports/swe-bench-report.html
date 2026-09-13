@@ -1,0 +1,455 @@
+<title>tinyorbit on SWE-bench Verified</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  color-scheme:light;
+  --bg:#f7f8f6; --bg-2:#eef0ec; --bg-3:#e3e6e0; --line:#d3d7d0; --line-2:#b9bfb6;
+  --ink:#14181c; --ink-2:#4b535d; --ink-3:#7a828c;
+  --accent:#2a78d6; --accent-ink:#1c5cab; --accent-soft:#dbe8f9;
+  --gray-mark:#b6bcc4; --gray-mark-2:#8f97a1;
+  --good:#1b7f3b; --good-soft:#dff1e4; --bad:#d23f3f; --bad-soft:#f8e0e0; --warn:#b8770a; --warn-soft:#f6ead2;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4;
+  --surface:#fcfcfb;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#15171a; --bg-2:#1c1f23; --bg-3:#24282d; --line:#31363c; --line-2:#454b52;
+    --ink:#eceef0; --ink-2:#aeb5bd; --ink-3:#7f868f;
+    --accent:#3987e5; --accent-ink:#86b6ef; --accent-soft:#1d2d44;
+    --gray-mark:#5b6371; --gray-mark-2:#7a828c;
+    --good:#4fbf6f; --good-soft:#173322; --bad:#ef6b6b; --bad-soft:#3a1d1d; --warn:#e0a03a; --warn-soft:#3a2e14;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181;
+    --surface:#1a1c1f;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#15171a; --bg-2:#1c1f23; --bg-3:#24282d; --line:#31363c; --line-2:#454b52;
+  --ink:#eceef0; --ink-2:#aeb5bd; --ink-3:#7f868f;
+  --accent:#3987e5; --accent-ink:#86b6ef; --accent-soft:#1d2d44;
+  --gray-mark:#5b6371; --gray-mark-2:#7a828c;
+  --good:#4fbf6f; --good-soft:#173322; --bad:#ef6b6b; --bad-soft:#3a1d1d; --warn:#e0a03a; --warn-soft:#3a2e14;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181;
+  --surface:#1a1c1f;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "IBM Plex Sans",system-ui,-apple-system,Segoe UI,sans-serif;padding-inline:clamp(16px,4vw,40px);padding-block:0 96px}
+a{color:var(--accent-ink);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--accent-ink) 40%,transparent)}
+a:hover{border-bottom-color:var(--accent-ink)}
+a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:1040px;margin:0 auto}
+.prose{max-width:70ch}
+h1,h2,h3{font-family:"Familjen Grotesk","IBM Plex Sans",sans-serif;text-wrap:balance;margin:0;line-height:1.12}
+h1{font-size:clamp(30px,4.6vw,46px);font-weight:700;letter-spacing:-.015em}
+h2{font-size:clamp(22px,3vw,28px);font-weight:600;margin-top:64px;padding-top:24px;border-top:1px solid var(--line)}
+h3{font-size:18px;font-weight:600;margin-top:32px}
+p{margin:12px 0}
+.mono,code,td.n,th.n,.tag,.eyebrow,.axis,.legend{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+code{font-size:.9em;background:var(--bg-2);padding:1px 5px;border-radius:3px}
+.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);font-weight:500}
+header{padding-block:56px 8px}
+header .meta{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:18px;color:var(--ink-2);font-size:14px}
+header .meta span b{color:var(--ink);font-weight:500;font-family:"IBM Plex Mono",monospace}
+.lede{font-size:19px;color:var(--ink-2);max-width:62ch;margin-top:16px}
+nav.toc{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:22px;font-size:14px}
+nav.toc a{border:0;color:var(--ink-2)}
+nav.toc a:hover{color:var(--accent-ink)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);margin-top:28px}
+.kpi{background:var(--surface);padding:18px 18px 16px}
+.kpi .v{font-family:"IBM Plex Mono",monospace;font-size:34px;font-weight:600;line-height:1;margin-top:8px;font-variant-numeric:tabular-nums}
+.kpi .v small{font-size:16px;color:var(--ink-3);font-weight:400}
+.kpi .d{font-size:13px;color:var(--ink-2);margin-top:8px}
+.kpi.accent .v{color:var(--accent-ink)}
+table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
+.tscroll{overflow-x:auto;margin-top:16px;border:1px solid var(--line);background:var(--surface)}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:500;color:var(--ink-2);font-size:12px;letter-spacing:.04em;text-transform:uppercase;background:var(--bg-2);position:sticky;top:0}
+td.n,th.n{text-align:right}
+tr:last-child td{border-bottom:0}
+tr.hi td{background:var(--accent-soft)}
+.pill{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:12px;padding:2px 8px;border-radius:999px;line-height:1.5;white-space:nowrap}
+.pill.ok{background:var(--good-soft);color:var(--good)}
+.pill.miss{background:var(--bad-soft);color:var(--bad)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.dim{background:var(--bg-3);color:var(--ink-2)}
+.fig{margin-top:22px;background:var(--surface);border:1px solid var(--line);padding:16px 16px 12px}
+.fig .t{font-weight:600;font-size:15px}
+.fig .s{font-size:13px;color:var(--ink-2);margin-top:2px}
+.fig svg{display:block;width:100%;height:auto;margin-top:12px;overflow:visible}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--ink-2);margin-top:10px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.axis{font-size:11px;fill:var(--ink-3)}
+.lbl{font-family:"IBM Plex Mono",monospace;font-size:11.5px;fill:var(--ink-2)}
+.lbl.strong{fill:var(--ink);font-weight:500}
+.grid{stroke:var(--line);stroke-width:1}
+.base{stroke:var(--line-2);stroke-width:1}
+.tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--bg);font:12.5px/1.45 "IBM Plex Mono",monospace;padding:8px 10px;border-radius:4px;max-width:320px;z-index:9;opacity:0;transition:opacity .08s;white-space:pre-line}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:760px){.two{grid-template-columns:1fr}}
+.callout{border-left:3px solid var(--accent);background:var(--bg-2);padding:12px 16px;margin:20px 0;font-size:15px}
+.callout.bad{border-left-color:var(--bad)}
+.callout.warn{border-left-color:var(--warn)}
+pre{background:var(--bg-2);border:1px solid var(--line);padding:14px 16px;overflow-x:auto;font:13px/1.5 "IBM Plex Mono",monospace;margin:12px 0;white-space:pre-wrap}
+dl.kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 18px;margin:12px 0;font-size:14px}
+dl.kv dt{color:var(--ink-3);font-family:"IBM Plex Mono",monospace;font-size:12.5px;padding-top:2px}
+dl.kv dd{margin:0}
+ul{padding-left:20px}
+li{margin:6px 0}
+.src{font-size:13.5px;color:var(--ink-2)}
+.src li{margin:4px 0}
+.foot{margin-top:56px;padding-top:16px;border-top:1px solid var(--line);font-size:13px;color:var(--ink-3)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">Benchmark record · 2026-09-13</div>
+  <h1>tinyorbit on SWE-bench Verified</h1>
+  <p class="lede">Two live runs of a 1,100-line Python terminal agent on real GitHub issues: ten sampled instances, then ten from the hard tail. Every input, setting, transcript and verdict is recorded here, alongside how published harnesses did on the same twenty issues.</p>
+  <div class="meta">
+    <span>model <b>claude-opus-5</b></span>
+    <span>dataset <b>SWE-bench_Verified</b></span>
+    <span>scorer <b>swebench 5.0.2</b></span>
+    <span>instances <b>20</b></span>
+    <span>agent spend <b id="m-spend"></b></span>
+  </div>
+  <nav class="toc">
+    <a href="#headline">Headline</a><a href="#setup">Setup</a><a href="#easy">Easy run</a><a href="#hard">Hard run</a><a href="#harness">How the harness behaved</a><a href="#compare">Against other harnesses</a><a href="#caveats">What to trust</a><a href="#files">Artifacts</a>
+  </nav>
+</header>
+
+<section id="headline">
+  <div class="kpis" id="kpis"></div>
+  <div class="prose">
+    <p>The easy sample was a clean sweep, which mostly measures the model. The hard sample is where the harness shows. On those ten, tinyorbit resolved seven. The strongest published submission on the official leaderboard resolves five of the same ten, and the bash-only mini-SWE-agent reference on Opus 4.6 resolves two. That gap is confounded by model generation, so read it as "tinyorbit does not drop work the model can do", not as a harness ranking.</p>
+  </div>
+</section>
+
+<section id="setup">
+  <h2>Setup</h2>
+  <div class="two">
+    <div>
+      <h3>Agent</h3>
+      <dl class="kv" id="settings"></dl>
+    </div>
+    <div>
+      <h3>Environment</h3>
+      <dl class="kv" id="env"></dl>
+    </div>
+  </div>
+  <h3>Sampling</h3>
+  <div class="prose">
+    <p><b>Easy run.</b> All 500 instances sorted by id, shuffled with seed 42, first ten taken. This drew five rated under 15 minutes and five rated 15 minutes to an hour, and none from the hard tail. Seven of ten are Django.</p>
+    <p><b>Hard run.</b> The 45 instances rated 1 to 4 hours or over 4 hours, stratified by repository so Django could not dominate: 3 Django, 2 SymPy, and one each of Sphinx, Astropy, pytest, xarray and pylint, drawn with seed 42 inside each repository. Two of the three instances rated over 4 hours landed in the sample.</p>
+  </div>
+  <h3>Prompt template</h3>
+  <pre id="prompt"></pre>
+  <div class="prose"><p>The issue text is inserted verbatim. Nothing in the prompt names the interpreter, the test runner, or the repository layout. The agent discovers all of it.</p></div>
+  <h3>Pipeline</h3>
+  <div class="prose">
+    <p>Per task the host script pulls the instance image, starts a container, copies tinyorbit in, installs it with uv, runs <code>main.py --print</code> with the rendered prompt, copies out the full message history, takes <code>git diff</code> from <code>/testbed</code>, and removes the container. Tasks run one at a time. A smoke run with no credentials precedes each paid run. Scoring is the official <code>swebench eval verified</code> command, which applies each patch to a clean container and runs the hidden FAIL_TO_PASS and PASS_TO_PASS tests.</p>
+  </div>
+</section>
+
+<section id="easy">
+  <h2>Easy run</h2>
+  <div class="prose"><p id="easy-summary"></p></div>
+  <div class="tscroll"><table id="t-easy"></table></div>
+</section>
+
+<section id="hard">
+  <h2>Hard run</h2>
+  <div class="prose"><p id="hard-summary"></p></div>
+  <div class="tscroll"><table id="t-hard"></table></div>
+  <h3>The three misses</h3>
+  <div class="prose">
+    <p><b>astropy-13398</b> asked for a new direct ITRS to observed-frame transform. The agent added the transforms and tests, but skipped refraction support and left the ITRS frame class unchanged, and its own summary says so. All four hidden tests fail and five existing tests regress. This is an incomplete fix the agent knew was incomplete.</p>
+    <p><b>django-10554</b> is a union-queryset ordering bug. The agent changed expression identity so fields compare by model and name, and touched five files including test fixtures. Both its patch and the hidden test patch applied cleanly, but the hidden test still raised the original <code>ORDER BY term does not match any column</code> error and the test process crashed, which the scorer logged as an apply failure. The fix addressed a symptom in the wrong layer. The agent's own test passed, which is a warning about self-written tests as evidence.</p>
+    <p><b>pytest-10356</b> concerns marker inheritance across multiple base classes. The patch was small and clean, PASS_TO_PASS was untouched, but the one hidden test <code>test_mark_mro</code> still fails. The agent verified against tests it wrote, not the behavior the issue describes.</p>
+  </div>
+  <div class="callout warn">In all three misses the agent reported success after running tests it had written itself. The harness never asks the model to derive a failing reproduction from the issue text before editing. That is the single most actionable finding in this record.</div>
+</section>
+
+<section id="harness">
+  <h2>How the harness behaved</h2>
+  <div class="fig" id="f-cost"></div>
+  <div class="fig" id="f-calls"></div>
+  <div class="fig" id="f-tools"></div>
+  <div class="prose">
+    <h3>What the numbers say</h3>
+    <ul>
+      <li><b>Turn budget was almost never the limit.</b> One task in twenty hit the 60-turn cap, and that one, sympy-13878, still resolved. The median hard task used 40 calls. A cap of 60 is adequate for this difficulty band; the misses ended by choice, not by budget.</li>
+      <li><b>Cache carried the cost.</b> Across both runs, uncached input was a few hundred tokens per task while cache reads ran to hundreds of thousands. Hard tasks cost about three times easy ones per task, driven by more turns over a larger context, not by output volume.</li>
+      <li><b>Bash is the workhorse.</b> Bash accounts for roughly half of all tool calls, and on the hardest tasks more. Grep and Glob are rarely used; the agent prefers <code>grep</code> and <code>find</code> through Bash. That is fine for correctness but means the read-only fast path and parallel execution the dedicated tools enable are mostly unused.</li>
+      <li><b>Interpreter discovery is a recurring tax.</b> Each Django task spent several early Bash calls finding the conda environment at <code>/opt/miniconda3/envs/testbed</code>. One line in the prompt would remove those turns from every SWE-bench task.</li>
+      <li><b>Emulation dominates wall-clock on some repos.</b> xarray-6938 took 14 minutes on the easy run while its neighbors took one, almost all of it inside the test suite under x86 emulation. Agent minutes are not a clean harness metric on this machine.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="compare">
+  <h2>Against other harnesses</h2>
+  <div class="prose">
+    <p>The official SWE-bench experiments repository publishes per-instance results for every leaderboard submission. Those were scored on the exact twenty instances tinyorbit ran, so the comparison below is task-for-task rather than a leaderboard average. Claude Code, OpenAI Codex CLI and opencode have never submitted to the official leaderboard, so they appear only in the aggregate table with the caveats noted there.</p>
+  </div>
+  <div class="fig" id="f-matrix"></div>
+  <div class="fig" id="f-hardbar"></div>
+  <div class="tscroll"><table id="t-harness"></table></div>
+  <div class="prose">
+    <p>Every published entry here runs a model at least one generation older than Opus 5, so tinyorbit's edge on the hard ten is a combined model-plus-harness effect. Six of the ten hard instances are missed by nearly every submission; tinyorbit resolved four of those six. The fair harness test remains the one this record does not contain: mini-SWE-agent on Opus 5 on the same twenty instances.</p>
+  </div>
+  <h3>Aggregate numbers on the full 500</h3>
+  <div class="tscroll"><table id="t-agg"></table></div>
+  <div class="prose">
+    <p>These are not comparable to the task-level figures above. Vendor and third-party numbers use different scaffolds, attempt counts and effort settings, and several vendors report on subsets. They are included because they are the numbers people quote, not because they measure the same thing.</p>
+  </div>
+</section>
+
+<section id="caveats">
+  <h2>What to trust</h2>
+  <div class="prose">
+    <ul>
+      <li><b>Sample size.</b> Ten tasks per run. A perfect ten only bounds the true rate above roughly 70 percent. Seven of ten has a 95 percent interval of about 35 to 93 percent. Treat the per-task results as case studies with a verdict each, not as a rate.</li>
+      <li><b>Model confound.</b> No published harness result on the official leaderboard uses Opus 5. Any advantage tinyorbit shows is partly the model.</li>
+      <li><b>Contamination.</b> Frontier models have been shown to reproduce gold patches for some Verified tasks. The django-14672 fix matched the upstream commit line for line. Resolved does not always mean reasoned.</li>
+      <li><b>Single attempt, one seed.</b> Each task ran once. Agent runs are stochastic; a second run would move one or two verdicts either way.</li>
+      <li><b>Emulated hardware.</b> All containers ran x86_64 images under emulation on Apple Silicon with 8 GB of memory. Wall-clock is inflated and one timeout-class failure could have been infrastructure. None was observed.</li>
+      <li><b>Scorer label on django-10554.</b> The report file says the patch did not apply. The evaluation log shows both patches applied and the test run crashed. The verdict is correct; the label is not.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="files">
+  <h2>Artifacts</h2>
+  <div class="prose">
+    <p>Everything below is on the machine that ran the benchmark, under <code>bench/logs/</code>. Each run directory is self-contained so a later run cannot overwrite it.</p>
+    <dl class="kv">
+      <dt>run-2026-09-13T1024Z/</dt><dd>Easy run. <code>manifest.md</code>, <code>results.md</code>, timestamped <code>smoke.log</code> <code>run.log</code> <code>eval.log</code>, the <code>driver.sh</code> that ran, frozen <code>tasks.json</code> <code>prompt.txt</code> <code>run.py</code>.</dd>
+      <dt>run-hard-2026-09-13T1136Z/</dt><dd>Hard run, same layout, plus <code>tasks-hard10.json</code> and <code>hard_ids.txt</code>.</dd>
+      <dt>transcripts/&lt;id&gt;.out</dt><dd>Rendered agent stdout: streamed text, each tool call and a truncated result line.</dd>
+      <dt>transcripts/&lt;id&gt;.err</dt><dd>stderr, including the final cost line.</dd>
+      <dt>transcripts/&lt;id&gt;.messages.json</dt><dd>Full message history with complete tool inputs and outputs, plus the token and cost ledger. This is the file to read when studying a task.</dd>
+      <dt>patches/&lt;id&gt;.diff</dt><dd>The model patch submitted for scoring. Also in <code>predictions.jsonl</code>.</dd>
+      <dt>eval_logs/&lt;id&gt;/</dt><dd>swebench's evaluation: <code>report.json</code> with per-test verdicts, <code>test_output.txt</code>, <code>run_instance.log</code>.</dd>
+      <dt>tinyorbit.*.json</dt><dd>swebench summary report with resolved and unresolved ids.</dd>
+    </dl>
+  </div>
+  <h3>Sources for the comparison</h3>
+  <ul class="src">
+    <li><a href="https://github.com/SWE-bench/experiments/tree/main/evaluation/verified">SWE-bench experiments repository</a>, per-instance results for every leaderboard submission scored above.</li>
+    <li><a href="https://www.swebench.com/verified.html">SWE-bench Verified leaderboard</a>, including the bash-only mini-SWE-agent track.</li>
+    <li><a href="https://www.vals.ai/benchmarks/swebench">Vals AI SWE-bench Verified</a>, bash-only harness, source of the Opus 5 aggregate figure. Marked archived as saturated.</li>
+    <li><a href="https://www.anthropic.com/news/claude-opus-5">Anthropic, Claude Opus 5 announcement</a>. Publishes no SWE-bench Verified number; its Frontier-Bench results use the mini-SWE-agent harness.</li>
+    <li><a href="https://github.com/swe-agent/mini-swe-agent">mini-SWE-agent</a>, the 100-line bash-only reference harness.</li>
+    <li><a href="https://epoch.ai/benchmarks/swe-bench-verified">Epoch AI SWE-bench Verified</a>, methodology for an independent scaffold with bash, editor and patch tools on 484 validated instances.</li>
+    <li><a href="https://www.digitalapplied.com/blog/swe-bench-verified-june-2026-benchmark-vs-scaffolding-analysis">SWE-bench in 2026: benchmarks vs scaffolding</a>, third-party summary of why vendor numbers are not comparable.</li>
+  </ul>
+  <p class="foot">Generated from the run records on 2026-09-13. Figures are drawn from the data embedded in this page; hover any mark for the exact values.</p>
+</section>
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+const DATA = {"runs": {"easy": {"dir": "logs/run-2026-09-13T1024Z", "tasks": [{"instance_id": "django__django-14672", "repo": "django/django", "difficulty": "15 min - 1 hour", "resolved": true, "exit": "completed", "calls": 22, "usd": 0.2442, "minutes": 1.0, "diff_chars": 1733, "input_tokens": 44, "cache_read": 174542, "cache_write": 11669, "output_tokens": 3352, "last_context": 11671, "messages": 44, "tools": {"Bash": 16, "Edit": 3, "Read": 2}, "f2p_tests": 168, "p2p_tests": 0, "f2p_fail": 0, "p2p_fail": 0, "patch_applied": true}, {"instance_id": "sphinx-doc__sphinx-10449", "repo": "sphinx-doc/sphinx", "difficulty": "<15 min fix", "resolved": true, "exit": "completed", "calls": 25, "usd": 0.3281, "minutes": 1.5, "diff_chars": 2375, "input_tokens": 50, "cache_read": 242369, "cache_write": 14080, "output_tokens": 4746, "last_context": 15650, "messages": 50, "tools": {"Bash": 16, "Edit": 6, "Read": 2}, "f2p_tests": 1, "p2p_tests": 30, "f2p_fail": 0, "p2p_fail": 0, "patch_applied": true}, {"instance_id": "django__django-11299", "repo": "django/django", "difficulty": "<15 min fix", "resolved": true, "exit": "completed", "calls": 16, "usd": 0.1866, "minutes": 0.7, "diff_chars": 2108, "input_tokens": 32, "cache_read": 118755, "cache_write": 9521, "output_tokens": 2704, "last_context": 11091, "messages": 32, "tools": {"Bash": 8, "Read": 2, "Edit": 5}, "f2p_tests": 1, "p2p_tests": 103, "f2p_fail": 0, "p2p_fail": 0, "patch_applied": true}, {"instance_id": "django__django-14493", "repo": "django/django", "difficulty": "<15 min fix", "resolved": true, "exit": "completed", "calls": 19, "usd": 0.3265, "minutes": 1.2, "diff_chars": 1984, "input_tokens": 38, "cache_read": 214692, "cache_write": 23354, "output_tokens": 2921, "last_context": 24924, "messages": 38, "tools": {"Read": 4, "Edit": 3, "Grep": 3, "Bash": 8}, "f2p_tests": 1, "p2p_tests": 36, "f2p_fail": 0, "p2p_fail": 0, "patch_applied": true}, {"instance_id": "django__django-11551", "repo": "django/django", "difficulty": "15 min - 1 hour", "resolved": true, "exit": "completed", "calls": 21, "usd": 0.2818, "minutes": 1.1, "diff_chars": 4005, "input_tokens": 42, "cache_read": 180306, "cache_write": 12268, "output_tokens": 4592, "last_context": 13838, "messages": 42, "tools": {"Bash": 13, "Edit": 5, "Read": 2}, "f2p_tests": 1, "p2p_tests": 119, "f2p_fail": 0, "p2p_fail": 0, "patch_applied": true}, {"instance_id": "django__django-12143", "repo": "django/django", "difficulty": "15 min - 1 hour", "resolved": true, "exit": "completed", "calls": 19, "usd": 0.1623, "minutes": 1.0, "diff_chars": 2249, "input_tokens": 38, "cache_read": 103056, "cache_write": 6769, "output_tokens": 2732, "last_context": 8339, "messages": 38, "tools": {"Grep": 2, "Read": 2, "Edit": 2, "Bash": 12}, "f2p_tests": 1, "p2p_tests": 52, "f2p_fail": 0, "p2p_fail": 0, "patch_applied": true}, {"instance_id": "pydata__xarray-6938", "repo": "pydata/xarray", "difficulty": "15 min - 1 hour", "resolved": true, "exit": "completed", "calls": 31, "usd": 0.531, "minutes": 13.7, "diff_chars": 1832, "input_tokens": 62, "cache_read": 285377, "cache_write": 35501, "output_tokens": 6644, "last_context": 16964, "messages": 62, "tools": {"Grep": 1, "Bash": 20, "Edit": 6, "Read": 3}, "f2p_tests": 1, "p2p_tests": 430, "f2p_fail": 0, "p2p_fail": 0, "patch_applied": true}, {"instance_id": "django__django-15916", "repo": "django/django", "difficulty": "15 min - 1 hour", "resolved": true, "exit": "completed", "calls": 21, "usd": 0.6393, "minutes": 2.5, "diff_chars": 3079, "input_tokens": 42, "cache_read": 424028, "cache_write": 32539, "output_tokens": 8948, "last_context": 34109, "messages": 42, "tools": {"Grep": 3, "Read": 6, "Edit": 4, "Bash": 10}, "f2p_tests": 2, "p2p_tests": 149, "f2p_fail": 0, "p2p_fail": 0, "patch_applied": true}, {"instance_id": "django__django-12193", "repo": "django/django", "difficulty": "<15 min fix", "resolved": true, "exit": "completed", "calls": 24, "usd": 0.4828, "minutes": 1.3, "diff_chars": 1312, "input_tokens": 48, "cache_read": 453145, "cache_write": 25068, "output_tokens": 3971, "last_context": 26638, "messages": 48, "tools": {"Read": 3, "Edit": 2, "Bash": 18}, "f2p_tests": 1, "p2p_tests": 11, "f2p_fail": 0, "p2p_fail": 0, "patch_applied": true}, {"instance_id": "pytest-dev__pytest-5262", "repo": "pytest-dev/pytest", "difficulty": "<15 min fix", "resolved": true, "exit": "completed", "calls": 20, "usd": 0.2102, "minutes": 1.0, "diff_chars": 1205, "input_tokens": 40, "cache_read": 147905, "cache_write": 9601, "output_tokens": 3042, "last_context": 11171, "messages": 40, "tools": {"Grep": 3, "Bash": 10, "Edit": 4, "Read": 2, "Write": 1}, "f2p_tests": 1, "p2p_tests": 108, "f2p_fail": 0, "p2p_fail": 0, "patch_applied": true}], "resolved": 10, "submitted": 10, "total_usd": 3.39, "total_calls": 218, "total_minutes": 25.0, "started": "2026-09-13T10:26:19Z", "ended": "2026-09-13T11:01:40Z", "run_finished": "2026-09-13T10:57:05Z"}, "hard": {"dir": "logs/run-hard-2026-09-13T1136Z", "tasks": [{"instance_id": "django__django-16560", "repo": "django/django", "difficulty": "1-4 hours", "resolved": true, "exit": "completed", "calls": 50, "usd": 1.2735, "minutes": 3.7, "diff_chars": 21801, "input_tokens": 100, "cache_read": 1286735, "cache_write": 44795, "output_tokens": 13988, "last_context": 44797, "messages": 100, "tools": {"Read": 7, "Edit": 23, "Bash": 19}, "f2p_tests": 8, "p2p_tests": 66, "f2p_fail": 0, "p2p_fail": 0, "patch_applied": true}, {"instance_id": "django__django-11885", "repo": "django/django", "difficulty": "1-4 hours", "resolved": true, "exit": "completed", "calls": 30, "usd": 0.6971, "minutes": 5.8, "diff_chars": 8351, "input_tokens": 60, "cache_read": 542627, "cache_write": 26323, "output_tokens": 10438, "last_context": 27893, "messages": 60, "tools": {"Read": 3, "Bash": 18, "Edit": 8}, "f2p_tests": 1, "p2p_tests": 43, "f2p_fail": 0, "p2p_fail": 0, "patch_applied": true}, {"instance_id": "django__django-10554", "repo": "django/django", "difficulty": "1-4 hours", "resolved": false, "exit": "completed", "calls": 56, "usd": 1.8834, "minutes": 11.2, "diff_chars": 4683, "input_tokens": 112, "cache_read": 1760529, "cache_write": 54817, "output_tokens": 26398, "last_context": 56387, "messages": 112, "tools": {"Bash": 52, "Edit": 2, "Read": 1}, "f2p_tests": 2, "p2p_tests": 23, "f2p_fail": null, "p2p_fail": null, "patch_applied": false}, {"instance_id": "sympy__sympy-17630", "repo": "sympy/sympy", "difficulty": "1-4 hours", "resolved": true, "exit": "completed", "calls": 45, "usd": 0.9036, "minutes": 6.1, "diff_chars": 1870, "input_tokens": 90, "cache_read": 827553, "cache_write": 29514, "output_tokens": 12197, "last_context": 31084, "messages": 90, "tools": {"Read": 8, "Bash": 32, "Edit": 4}, "f2p_tests": 2, "p2p_tests": 19, "f2p_fail": 0, "p2p_fail": 0, "patch_applied": true}, {"instance_id": "sympy__sympy-13878", "repo": "sympy/sympy", "difficulty": ">4 hours", "resolved": true, "exit": "max_turns", "calls": 60, "usd": 1.7714, "minutes": 11.2, "diff_chars": 7207, "input_tokens": 120, "cache_read": 1751833, "cache_write": 50387, "output_tokens": 23199, "last_context": 51957, "messages": 121, "tools": {"Bash": 36, "Read": 18, "Edit": 16}, "f2p_tests": 1, "p2p_tests": 19, "f2p_fail": 0, "p2p_fail": 0, "patch_applied": true}, {"instance_id": "sphinx-doc__sphinx-7590", "repo": "sphinx-doc/sphinx", "difficulty": ">4 hours", "resolved": true, "exit": "completed", "calls": 38, "usd": 0.7215, "minutes": 3.0, "diff_chars": 8459, "input_tokens": 76, "cache_read": 574011, "cache_write": 23282, "output_tokens": 11544, "last_context": 24852, "messages": 76, "tools": {"Bash": 21, "Read": 5, "Edit": 11}, "f2p_tests": 1, "p2p_tests": 24, "f2p_fail": 0, "p2p_fail": 0, "patch_applied": true}, {"instance_id": "astropy__astropy-13398", "repo": "astropy/astropy", "difficulty": "1-4 hours", "resolved": false, "exit": "completed", "calls": 40, "usd": 1.0478, "minutes": 4.0, "diff_chars": 11276, "input_tokens": 80, "cache_read": 892836, "cache_write": 37715, "output_tokens": 14609, "last_context": 39285, "messages": 80, "tools": {"Bash": 28, "Read": 5, "Write": 2, "Edit": 6}, "f2p_tests": 4, "p2p_tests": 68, "f2p_fail": 4, "p2p_fail": 5, "patch_applied": true}, {"instance_id": "pytest-dev__pytest-10356", "repo": "pytest-dev/pytest", "difficulty": "1-4 hours", "resolved": false, "exit": "completed", "calls": 22, "usd": 0.3315, "minutes": 1.8, "diff_chars": 3418, "input_tokens": 44, "cache_read": 212124, "cache_write": 14518, "output_tokens": 5381, "last_context": 16088, "messages": 44, "tools": {"Bash": 13, "Read": 2, "Edit": 5, "Write": 1}, "f2p_tests": 1, "p2p_tests": 79, "f2p_fail": 1, "p2p_fail": 0, "patch_applied": true}, {"instance_id": "pydata__xarray-3993", "repo": "pydata/xarray", "difficulty": "1-4 hours", "resolved": true, "exit": "completed", "calls": 30, "usd": 0.4635, "minutes": 2.0, "diff_chars": 5016, "input_tokens": 60, "cache_read": 366509, "cache_write": 17785, "output_tokens": 6753, "last_context": 19355, "messages": 60, "tools": {"Bash": 18, "Read": 5, "Edit": 8}, "f2p_tests": 2, "p2p_tests": 2398, "f2p_fail": 0, "p2p_fail": 0, "patch_applied": true}, {"instance_id": "pylint-dev__pylint-4551", "repo": "pylint-dev/pylint", "difficulty": "1-4 hours", "resolved": true, "exit": "completed", "calls": 41, "usd": 1.1405, "minutes": 4.5, "diff_chars": 9256, "input_tokens": 82, "cache_read": 834912, "cache_write": 36823, "output_tokens": 19699, "last_context": 38393, "messages": 82, "tools": {"Bash": 21, "Edit": 13, "Read": 7}, "f2p_tests": 10, "p2p_tests": 0, "f2p_fail": 0, "p2p_fail": 0, "patch_applied": true}], "resolved": 7, "submitted": 10, "total_usd": 10.23, "total_calls": 412, "total_minutes": 53.3, "started": "2026-09-13T11:36:35Z", "ended": "2026-09-13T12:42:13Z", "run_finished": "2026-09-13T12:35:32Z"}}, "harnesses": [{"dir": "20250522_tools_claude-4-opus", "name": "Tools + Claude 4 Opus (2025-05-22)", "agent": "Tools", "full_pct": null, "usd_per_inst": null, "calls_per_inst": null, "easy10": 9, "hard10": 4, "hard_misses": ["django__django-10554", "sympy__sympy-17630", "sphinx-doc__sphinx-7590", "astropy__astropy-13398", "pytest-dev__pytest-10356", "pylint-dev__pylint-4551"]}, {"dir": "20250603_Refact_Agent_claude-4-sonnet", "name": "Refact.ai Agent + Claude 4 Sonnet + o4-mini", "agent": "Refact.ai Agent", "full_pct": null, "usd_per_inst": null, "calls_per_inst": null, "easy10": 10, "hard10": 2, "hard_misses": ["django__django-16560", "django__django-11885", "django__django-10554", "sympy__sympy-17630", "sphinx-doc__sphinx-7590", "astropy__astropy-13398", "pytest-dev__pytest-10356", "pylint-dev__pylint-4551"]}, {"dir": "20250610_augment_agent_v1", "name": "Augment Agent v1", "agent": "Augment Agent v1", "full_pct": null, "usd_per_inst": null, "calls_per_inst": null, "easy10": 8, "hard10": 2, "hard_misses": ["django__django-11885", "django__django-10554", "sympy__sympy-17630", "sphinx-doc__sphinx-7590", "astropy__astropy-13398", "pytest-dev__pytest-10356", "pydata__xarray-3993", "pylint-dev__pylint-4551"]}, {"dir": "20250612_trae", "name": "TRAE + Claude Sonnet 4 + Opus 4 + Sonnet 3.7 + Gemini 2.5 Pro", "agent": "TRAE", "full_pct": null, "usd_per_inst": null, "calls_per_inst": null, "easy10": 9, "hard10": 3, "hard_misses": ["django__django-11885", "django__django-10554", "sympy__sympy-17630", "sphinx-doc__sphinx-7590", "astropy__astropy-13398", "pytest-dev__pytest-10356", "pylint-dev__pylint-4551"]}, {"dir": "20250807_openhands_gpt5", "name": "OpenHands + GPT-5", "agent": "OpenHands", "full_pct": null, "usd_per_inst": null, "calls_per_inst": null, "easy10": 8, "hard10": 3, "hard_misses": ["django__django-11885", "django__django-10554", "sympy__sympy-17630", "sphinx-doc__sphinx-7590", "astropy__astropy-13398", "pytest-dev__pytest-10356", "pylint-dev__pylint-4551"]}, {"dir": "20250901_warp", "name": "Warp", "agent": "Warp", "full_pct": null, "usd_per_inst": null, "calls_per_inst": null, "easy10": 8, "hard10": 3, "hard_misses": ["django__django-10554", "sympy__sympy-17630", "sympy__sympy-13878", "sphinx-doc__sphinx-7590", "astropy__astropy-13398", "pytest-dev__pytest-10356", "pylint-dev__pylint-4551"]}, {"dir": "20250928_trae_doubao_seed_code", "name": "TRAE + Doubao-Seed-Code", "agent": "TRAE", "full_pct": null, "usd_per_inst": null, "calls_per_inst": null, "easy10": 9, "hard10": 4, "hard_misses": ["django__django-10554", "sympy__sympy-17630", "sphinx-doc__sphinx-7590", "astropy__astropy-13398", "pytest-dev__pytest-10356", "pylint-dev__pylint-4551"]}, {"dir": "20251103_SalesforceAIResearch_SAGE_OpenHands", "name": "Salesforce AI Research SAGE (OpenHands)", "agent": "Salesforce AI Research SAGE", "full_pct": null, "usd_per_inst": null, "calls_per_inst": null, "easy10": 8, "hard10": 2, "hard_misses": ["django__django-11885", "django__django-10554", "sympy__sympy-17630", "sphinx-doc__sphinx-7590", "astropy__astropy-13398", "pytest-dev__pytest-10356", "pydata__xarray-3993", "pylint-dev__pylint-4551"]}, {"dir": "20251124_mini-v1.16.0_gpt-5.1-codex", "name": "GPT 5.1 Codex (medium)", "agent": "mini-SWE-agent", "full_pct": 66.0, "usd_per_inst": 0.5888823500000001, "calls_per_inst": 23.882, "easy10": 7, "hard10": 2, "hard_misses": ["django__django-16560", "django__django-10554", "sympy__sympy-17630", "sympy__sympy-13878", "sphinx-doc__sphinx-7590", "astropy__astropy-13398", "pytest-dev__pytest-10356", "pylint-dev__pylint-4551"]}, {"dir": "20251127_openhands_claude-opus-4-5", "name": "OpenHands + Claude Opus 4.5", "agent": "OpenHands", "full_pct": null, "usd_per_inst": null, "calls_per_inst": null, "easy10": 9, "hard10": 3, "hard_misses": ["django__django-16560", "django__django-11885", "django__django-10554", "sympy__sympy-17630", "sphinx-doc__sphinx-7590", "astropy__astropy-13398", "pylint-dev__pylint-4551"]}, {"dir": "20251205_sonar-foundation-agent_claude-opus-4-5", "name": "Sonar Foundation Agent + Claude 4.5 Opus", "agent": "Sonar Foundation Agent", "full_pct": null, "usd_per_inst": null, "calls_per_inst": null, "easy10": 10, "hard10": 5, "hard_misses": ["django__django-16560", "django__django-10554", "sphinx-doc__sphinx-7590", "astropy__astropy-13398", "pylint-dev__pylint-4551"]}, {"dir": "20251215_livesweagent_claude-opus-4-5", "name": "live-SWE-agent + Claude 4.5 Opus medium (20251101)", "agent": "live-SWE-agent", "full_pct": null, "usd_per_inst": null, "calls_per_inst": null, "easy10": 10, "hard10": 3, "hard_misses": ["django__django-11885", "django__django-10554", "sympy__sympy-17630", "sphinx-doc__sphinx-7590", "astropy__astropy-13398", "pytest-dev__pytest-10356", "pylint-dev__pylint-4551"]}, {"dir": "20260217_mini-v2.0.0_claude-4-5-haiku-high", "name": "Claude 4.5 Haiku (high)", "agent": "mini-SWE-agent", "full_pct": 66.6, "usd_per_inst": 0.33092443610000005, "calls_per_inst": 66.154, "easy10": 8, "hard10": 2, "hard_misses": ["django__django-16560", "django__django-10554", "sympy__sympy-17630", "sphinx-doc__sphinx-7590", "astropy__astropy-13398", "pytest-dev__pytest-10356", "pydata__xarray-3993", "pylint-dev__pylint-4551"]}, {"dir": "20260217_mini-v2.0.0_claude-4-5-opus-high", "name": "Claude 4.5 Opus (high)", "agent": "mini-SWE-agent", "full_pct": 76.8, "usd_per_inst": 0.753907997, "calls_per_inst": 32.896, "easy10": 10, "hard10": 2, "hard_misses": ["django__django-16560", "django__django-11885", "django__django-10554", "sympy__sympy-17630", "sphinx-doc__sphinx-7590", "astropy__astropy-13398", "pytest-dev__pytest-10356", "pylint-dev__pylint-4551"]}, {"dir": "20260217_mini-v2.0.0_claude-4-5-sonnet-high", "name": "Claude 4.5 Sonnet (high)", "agent": "mini-SWE-agent", "full_pct": 71.4, "usd_per_inst": 0.6578964984000001, "calls_per_inst": 48.3, "easy10": 9, "hard10": 2, "hard_misses": ["django__django-16560", "django__django-11885", "django__django-10554", "sympy__sympy-17630", "sphinx-doc__sphinx-7590", "astropy__astropy-13398", "pytest-dev__pytest-10356", "pylint-dev__pylint-4551"]}, {"dir": "20260217_mini-v2.0.0_claude-4-6-opus", "name": "Claude 4.6 Opus", "agent": "mini-SWE-agent", "full_pct": 75.6, "usd_per_inst": 0.5515226445, "calls_per_inst": 28.932, "easy10": 8, "hard10": 2, "hard_misses": ["django__django-16560", "django__django-11885", "django__django-10554", "sympy__sympy-17630", "sphinx-doc__sphinx-7590", "astropy__astropy-13398", "pytest-dev__pytest-10356", "pylint-dev__pylint-4551"]}, {"dir": "20260217_mini-v2.0.0_gpt-5-2-high", "name": "GPT 5.2 (high)", "agent": "mini-SWE-agent", "full_pct": 72.8, "usd_per_inst": 0.4735670177, "calls_per_inst": 35.046, "easy10": 9, "hard10": 3, "hard_misses": ["django__django-10554", "sympy__sympy-17630", "sympy__sympy-13878", "sphinx-doc__sphinx-7590", "astropy__astropy-13398", "pytest-dev__pytest-10356", "pylint-dev__pylint-4551"]}, {"dir": "20260226_mini-v2.0.0_gemini-3-pro-high", "name": "Gemini 3 Pro", "agent": "mini-SWE-agent", "full_pct": 69.6, "usd_per_inst": 0.9600198564, "calls_per_inst": 51.282, "easy10": 0, "hard10": 0, "hard_misses": ["django__django-16560", "django__django-11885", "django__django-10554", "sympy__sympy-17630", "sympy__sympy-13878", "sphinx-doc__sphinx-7590", "astropy__astropy-13398", "pytest-dev__pytest-10356", "pydata__xarray-3993", "pylint-dev__pylint-4551"]}, {"dir": "20260901_mini-v2.4.2_gemini-3-5-flash", "name": "Gemini 3.5 Flash", "agent": "mini-SWE-agent", "full_pct": 71.8, "usd_per_inst": null, "calls_per_inst": 39.03, "easy10": 9, "hard10": 3, "hard_misses": ["django__django-16560", "django__django-11885", "django__django-10554", "sphinx-doc__sphinx-7590", "astropy__astropy-13398", "pytest-dev__pytest-10356", "pylint-dev__pylint-4551"]}], "prompt": "You are working in a git checkout of {repo} at /testbed. Below is a GitHub issue filed against this repository.\n\n<issue>\n{problem_statement}\n</issue>\n\nFix the issue. Requirements:\n- Make the smallest change that resolves the issue. Do not refactor unrelated code.\n- Find and run the existing tests that cover the affected code, and confirm they pass after your change. Add a test only if it is clearly needed to verify the fix.\n- Do not commit. Leave the changes in the working tree.\n- When you are done, summarize in a few sentences what you changed and why.\n", "settings": {"model": "claude-opus-5", "thinking": "adaptive", "effort": "default (high)", "max_tokens": "16K, escalates to 64K", "fallbacks": "server-side default", "caching": "on", "max_turns": 60, "permission_mode": "bypassPermissions", "timeout_min": {"easy": 45, "hard": 90}, "docker": "29.7.2, 8 CPU, 8 GB, linux/amd64 under emulation on arm64", "host": "macOS 26.6.2, Apple Silicon", "swebench": "5.0.2", "commit": "2a0a598 + uncommitted transcript hook", "dataset": "SWE-bench/SWE-bench_Verified (500)"}};
+const AGG = [
+  ["Claude Opus 5", "Vals AI bash-only harness", "~97%", "third-party, archived benchmark", "https://www.vals.ai/benchmarks/swebench"],
+  ["GPT-5.6 Sol", "Vals AI bash-only harness", "96.2%", "third-party", "https://www.vals.ai/benchmarks/swebench"],
+  ["Claude Fable 5", "vendor / third-party trackers", "~95%", "scaffold not disclosed", "https://www.digitalapplied.com/blog/swe-bench-verified-june-2026-benchmark-vs-scaffolding-analysis"],
+  ["Claude Opus 4.8", "vendor-reported", "88.6%", "scaffold not disclosed", "https://www.digitalapplied.com/blog/swe-bench-verified-june-2026-benchmark-vs-scaffolding-analysis"],
+  ["Claude Sonnet 5", "vendor-reported", "85.2%", "scaffold not disclosed", "https://www.digitalapplied.com/blog/swe-bench-verified-june-2026-benchmark-vs-scaffolding-analysis"],
+  ["Claude Opus 4.5 · mini-SWE-agent", "official leaderboard, bash-only", "76.8%", "$0.75 / instance, 32.9 calls", "https://www.swebench.com/verified.html"],
+  ["Claude Opus 4.6 · mini-SWE-agent", "official leaderboard, bash-only", "75.6%", "$0.55 / instance, 28.9 calls", "https://www.swebench.com/verified.html"],
+  ["GPT-5.2 (high) · mini-SWE-agent", "official leaderboard, bash-only", "72.8%", "$0.47 / instance, 35.0 calls", "https://www.swebench.com/verified.html"],
+  ["Claude Code", "no official submission", "not published", "vendor product; no per-instance data available", "https://www.swebench.com/verified.html"],
+  ["OpenAI Codex CLI", "no official submission", "not published", "vendor product; no per-instance data available", "https://www.swebench.com/verified.html"],
+  ["opencode", "no official submission", "not published", "no per-instance data available", "https://github.com/TheLime1/harness-bench"],
+];
+const fmt = n => n.toLocaleString("en-US");
+const usd = n => "$" + n.toFixed(2);
+const short = id => id.replace(/^.*__/, "");
+const E = DATA.runs.easy, H = DATA.runs.hard;
+const ALL = [...E.tasks.map(t => ({...t, run: "easy"})), ...H.tasks.map(t => ({...t, run: "hard"}))];
+const spend = E.total_usd + H.total_usd;
+document.getElementById("m-spend").textContent = usd(spend);
+
+// KPIs
+document.getElementById("kpis").innerHTML = [
+  ["accent", "Easy sample", `${E.resolved}<small> / ${E.submitted}</small>`, "resolved by swebench eval · " + E.total_minutes + " agent min"],
+  ["accent", "Hard sample", `${H.resolved}<small> / ${H.submitted}</small>`, "1–4 h and >4 h instances · " + H.total_minutes + " agent min"],
+  ["", "Agent spend", usd(spend), `${fmt(E.total_calls + H.total_calls)} API calls across 20 tasks`],
+  ["", "Turn cap hit", `1<small> / 20</small>`, "sympy-13878, 60 turns, still resolved"],
+].map(([c, l, v, d]) => `<div class="kpi ${c}"><div class="eyebrow">${l}</div><div class="v">${v}</div><div class="d">${d}</div></div>`).join("");
+
+// settings
+const S = DATA.settings;
+document.getElementById("settings").innerHTML = [
+  ["model", S.model], ["thinking", S.thinking], ["effort", S.effort], ["max_tokens", S.max_tokens], ["fallbacks", S.fallbacks], ["prompt caching", S.caching],
+  ["max turns", S.max_turns], ["permissions", S.permission_mode], ["task timeout", `${S.timeout_min.easy} min easy · ${S.timeout_min.hard} min hard`], ["tools", "Read, Write, Edit, Bash, Glob, Grep"], ["code", S.commit],
+].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+document.getElementById("env").innerHTML = [
+  ["host", S.host], ["docker", S.docker], ["scorer", "swebench " + S.swebench + ", -j 1"], ["dataset", S.dataset], ["easy run", `${E.started} → ${E.ended}`], ["hard run", `${H.started} → ${H.ended}`], ["concurrency", "one container at a time"],
+].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+document.getElementById("prompt").textContent = DATA.prompt.trim();
+
+// run tables
+function runTable(el, tasks) {
+  const head = `<tr><th>instance</th><th>repo</th><th>rated</th><th>verdict</th><th>exit</th><th class="n">calls</th><th class="n">usd</th><th class="n">min</th><th class="n">diff chars</th><th class="n">cache read</th><th class="n">output tok</th><th>hidden tests</th></tr>`;
+  const rows = tasks.map(t => `<tr><td class="mono">${short(t.instance_id)}</td><td>${t.repo.split("/")[0]}</td><td>${t.difficulty}</td>
+    <td><span class="pill ${t.resolved ? "ok" : "miss"}">${t.resolved ? "resolved" : "unresolved"}</span></td>
+    <td><span class="pill ${t.exit === "completed" ? "dim" : "warn"}">${t.exit}</span></td>
+    <td class="n">${t.calls}</td><td class="n">${t.usd.toFixed(2)}</td><td class="n">${t.minutes.toFixed(1)}</td><td class="n">${fmt(t.diff_chars)}</td><td class="n">${fmt(t.cache_read)}</td><td class="n">${fmt(t.output_tokens)}</td>
+    <td class="mono">${t.f2p_fail === null ? "crash" : (t.f2p_tests - t.f2p_fail) + "/" + t.f2p_tests + " f2p"}${t.p2p_fail ? ", " + t.p2p_fail + " regress" : ""}</td></tr>`).join("");
+  el.innerHTML = head + rows;
+}
+runTable(document.getElementById("t-easy"), E.tasks);
+runTable(document.getElementById("t-hard"), H.tasks);
+const med = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+document.getElementById("easy-summary").textContent = `${E.resolved} of ${E.submitted} resolved. ${usd(E.total_usd)} total, median ${med(E.tasks.map(t => t.calls))} calls and ${usd(med(E.tasks.map(t => t.usd)))} per task. Every task ended with the model declaring completion; every patch applied and passed both hidden test lists.`;
+document.getElementById("hard-summary").textContent = `${H.resolved} of ${H.submitted} resolved. ${usd(H.total_usd)} total, median ${med(H.tasks.map(t => t.calls))} calls and ${usd(med(H.tasks.map(t => t.usd)))} per task, about three times the easy run per task. One task exhausted its 60 turns and still resolved. The three misses are analyzed below.`;
+
+// tooltip
+const tip = document.getElementById("tip");
+function hover(el, text) {
+  el.addEventListener("mousemove", e => { tip.textContent = text; tip.style.opacity = 1; tip.style.left = Math.min(e.clientX + 14, innerWidth - 330) + "px"; tip.style.top = (e.clientY + 14) + "px"; });
+  el.addEventListener("mouseleave", () => tip.style.opacity = 0);
+}
+const NS = "http://www.w3.org/2000/svg";
+function svg(tag, attrs, parent) { const n = document.createElementNS(NS, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); if (parent) parent.appendChild(n); return n; }
+function fig(id, title, sub, w, h, legend) {
+  const el = document.getElementById(id);
+  el.innerHTML = `<div class="t">${title}</div><div class="s">${sub}</div>`;
+  const s = svg("svg", { viewBox: `0 0 ${w} ${h}`, role: "img", "aria-label": title }, el);
+  if (legend) { const l = document.createElement("div"); l.className = "legend"; l.innerHTML = legend.map(([c, t]) => `<span><i style="background:${c}"></i>${t}</span>`).join(""); el.appendChild(l); }
+  return s;
+}
+
+// ---- Fig: cost per task (horizontal bars, sorted, run-colored, verdict pill)
+(function () {
+  const rows = [...ALL].sort((a, b) => b.usd - a.usd);
+  const W = 960, L = 230, R = 150, rh = 22, H0 = 34, Hh = H0 + rows.length * rh + 10;
+  const s = fig("f-cost", "Cost per task", "Estimated from the token ledger at Opus 5 list prices. Hard tasks in orange, easy in blue; an outlined bar is an unresolved task.", W, Hh,
+    [["var(--s1)", "easy sample"], ["var(--s2)", "hard sample"]]);
+  const max = 2, x = v => L + v / max * (W - L - R);
+  [0, .5, 1, 1.5, 2].forEach(v => { svg("line", { x1: x(v), x2: x(v), y1: H0 - 8, y2: Hh - 10, class: "grid" }, s); const t = svg("text", { x: x(v), y: H0 - 14, class: "axis", "text-anchor": "middle" }, s); t.textContent = "$" + v.toFixed(1); });
+  rows.forEach((t, i) => {
+    const y = H0 + i * rh;
+    const lab = svg("text", { x: L - 10, y: y + 14, class: "lbl" + (t.run === "hard" ? " strong" : ""), "text-anchor": "end" }, s); lab.textContent = short(t.instance_id);
+    const color = t.run === "hard" ? "var(--s2)" : "var(--s1)";
+    const b = svg("rect", { x: x(0), y: y + 3, width: Math.max(2, x(t.usd) - x(0)), height: rh - 8, rx: 3, fill: t.resolved ? color : "var(--surface)", stroke: color, "stroke-width": t.resolved ? 0 : 2 }, s);
+    const v = svg("text", { x: x(t.usd) + 8, y: y + 14, class: "lbl" }, s); v.textContent = usd(t.usd) + " · " + t.calls + " calls" + (t.resolved ? "" : " · unresolved");
+    hover(b, `${t.instance_id}\n${t.difficulty}\ncost ${usd(t.usd)} · ${t.calls} calls · ${t.minutes} min\nuncached in ${fmt(t.input_tokens)} · cache read ${fmt(t.cache_read)} · cache write ${fmt(t.cache_write)} · out ${fmt(t.output_tokens)}\n${t.resolved ? "resolved" : "unresolved"} · exit ${t.exit}`);
+  });
+  svg("line", { x1: x(0), x2: x(0), y1: H0 - 8, y2: Hh - 10, class: "base" }, s);
+})();
+
+// ---- Fig: calls vs minutes dot plot (two small multiples: calls, minutes)
+(function () {
+  const rows = [...ALL].sort((a, b) => b.calls - a.calls);
+  const W = 960, L = 230, rh = 22, H0 = 34, Hh = H0 + rows.length * rh + 10, cw = 300, gap = 60;
+  const s = fig("f-calls", "Turns and wall-clock per task", "Left: API calls, capped at 60. Right: agent minutes inside the container, inflated by x86 emulation on repos with slow test suites.", W, Hh, [["var(--s1)", "easy"], ["var(--s2)", "hard"]]);
+  const panels = [["calls", 60, v => v, L], ["minutes", 15, v => v, L + cw + gap]];
+  panels.forEach(([key, max, f, x0]) => {
+    const x = v => x0 + Math.min(v, max) / max * cw;
+    const ticks = key === "calls" ? [0, 20, 40, 60] : [0, 5, 10, 15];
+    ticks.forEach(v => { svg("line", { x1: x(v), x2: x(v), y1: H0 - 8, y2: Hh - 10, class: "grid" }, s); const t = svg("text", { x: x(v), y: H0 - 14, class: "axis", "text-anchor": "middle" }, s); t.textContent = v; });
+    const cap = svg("text", { x: x0, y: H0 - 26, class: "eyebrow", fill: "var(--ink-3)", "font-size": "11" }, s); cap.textContent = key === "calls" ? "API CALLS" : "AGENT MINUTES";
+    rows.forEach((t, i) => {
+      const y = H0 + i * rh + 11;
+      if (key === "calls") { const lab = svg("text", { x: L - 10, y: y + 4, class: "lbl" + (t.run === "hard" ? " strong" : ""), "text-anchor": "end" }, s); lab.textContent = short(t.instance_id); }
+      svg("line", { x1: x(0), x2: x(t[key]), y1: y, y2: y, stroke: "var(--line-2)", "stroke-width": 1 }, s);
+      const c = svg("circle", { cx: x(t[key]), cy: y, r: 5, fill: t.run === "hard" ? "var(--s2)" : "var(--s1)", stroke: "var(--surface)", "stroke-width": 2 }, s);
+      if (key === "calls" && t.exit === "max_turns") { const m = svg("text", { x: x(60) + 8, y: y + 4, class: "lbl" }, s); m.textContent = "cap"; }
+      if (key === "minutes" && t.minutes > 15) { const m = svg("text", { x: x(15) + 8, y: y + 4, class: "lbl" }, s); m.textContent = t.minutes + " min"; }
+      hover(c, `${t.instance_id}\n${t.calls} calls · ${t.minutes} min · exit ${t.exit}\n${t.resolved ? "resolved" : "unresolved"}`);
+    });
+  });
+})();
+
+// ---- Fig: tool mix stacked horizontal bars
+(function () {
+  const TOOLS = ["Bash", "Edit", "Read", "Grep", "Write"], COL = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)", "var(--s5)"];
+  const rows = [...ALL].sort((a, b) => b.calls - a.calls);
+  const W = 960, L = 230, R = 120, rh = 22, H0 = 34, Hh = H0 + rows.length * rh + 10;
+  const s = fig("f-tools", "Tool calls per task, by tool", "Counted from the full message history. Bash dominates; Glob was never used in either run.", W, Hh, TOOLS.map((t, i) => [COL[i], t]));
+  const max = 70, x = v => L + v / max * (W - L - R);
+  [0, 20, 40, 60].forEach(v => { svg("line", { x1: x(v), x2: x(v), y1: H0 - 8, y2: Hh - 10, class: "grid" }, s); const t = svg("text", { x: x(v), y: H0 - 14, class: "axis", "text-anchor": "middle" }, s); t.textContent = v; });
+  rows.forEach((t, i) => {
+    const y = H0 + i * rh;
+    const lab = svg("text", { x: L - 10, y: y + 14, class: "lbl" + (t.run === "hard" ? " strong" : ""), "text-anchor": "end" }, s); lab.textContent = short(t.instance_id);
+    let acc = 0;
+    TOOLS.forEach((name, k) => {
+      const n = t.tools[name] || 0; if (!n) return;
+      const r = svg("rect", { x: x(acc) + 1, y: y + 3, width: Math.max(1, x(acc + n) - x(acc) - 2), height: rh - 8, rx: 2, fill: COL[k] }, s);
+      if (n >= 6) { const l = svg("text", { x: x(acc) + (x(acc + n) - x(acc)) / 2, y: y + 14, class: "lbl", "text-anchor": "middle", fill: "#fff", "font-size": "10.5" }, s); l.textContent = name === "Bash" ? "Bash " + n : n; }
+      hover(r, `${t.instance_id}\n${name}: ${n} of ${Object.values(t.tools).reduce((a, b) => a + b, 0)} tool calls`);
+      acc += n;
+    });
+    const tot = svg("text", { x: x(acc) + 8, y: y + 14, class: "lbl" }, s); tot.textContent = acc + (t.resolved ? "" : " · unresolved");
+  });
+})();
+
+// ---- Fig: resolved matrix vs published harnesses
+const HS = DATA.harnesses;
+const nice = d => {
+  const m = d.dir || d;
+  if (/mini-v/.test(m)) return "mini-SWE-agent · " + m.replace(/^\d+_mini-v[\d.]+_/, "").replace(/-high$/, " (high)").replace("claude-4-5", "Claude 4.5").replace("claude-4-6", "Claude 4.6").replace("gpt-5-2", "GPT-5.2").replace("gpt-5.1-codex", "GPT-5.1 Codex").replace("gemini-3-5-flash", "Gemini 3.5 Flash").replace("gemini-3-pro", "Gemini 3 Pro").replace("-opus", " Opus").replace("-sonnet", " Sonnet").replace("-haiku", " Haiku");
+  return m.replace(/^\d+_/, "").replace("tools_claude-4-opus", "Anthropic tools scaffold · Claude 4 Opus").replace("openhands_claude-opus-4-5", "OpenHands · Claude Opus 4.5").replace("openhands_gpt5", "OpenHands · GPT-5").replace("livesweagent_claude-opus-4-5", "Live-SWE-agent · Claude Opus 4.5").replace("sonar-foundation-agent_claude-opus-4-5", "Sonar Foundation Agent · Claude Opus 4.5").replace("Refact_Agent_claude-4-sonnet", "Refact Agent · Claude 4 Sonnet").replace("augment_agent_v1", "Augment Agent v1").replace("trae_doubao_seed_code", "TRAE · Doubao Seed Code").replace("trae", "TRAE (Jun 2025)").replace("warp", "Warp (Sep 2025)").replace("SalesforceAIResearch_SAGE_OpenHands", "Salesforce SAGE · OpenHands");
+};
+(function () {
+  const easyIds = E.tasks.map(t => t.instance_id), hardIds = H.tasks.map(t => t.instance_id);
+  const cols = [{ name: "tinyorbit · Claude Opus 5", easy: new Set(E.tasks.filter(t => t.resolved).map(t => t.instance_id)), hard: new Set(H.tasks.filter(t => t.resolved).map(t => t.instance_id)), me: true }];
+  const picked = ["20251205_sonar-foundation-agent_claude-opus-4-5", "20251215_livesweagent_claude-opus-4-5", "20251127_openhands_claude-opus-4-5", "20260217_mini-v2.0.0_claude-4-6-opus", "20260217_mini-v2.0.0_claude-4-5-opus-high", "20260217_mini-v2.0.0_gpt-5-2-high", "20251124_mini-v1.16.0_gpt-5.1-codex", "20250901_warp", "20250928_trae_doubao_seed_code", "20250522_tools_claude-4-opus"];
+  picked.forEach(d => { const h = HS.find(x => x.dir === d); if (!h) return; const miss = new Set(h.hard_misses); cols.push({ name: nice(d), hard: new Set(hardIds.filter(i => !miss.has(i))), easyN: h.easy10, hardN: h.hard10 }); });
+  const ids = hardIds;
+  const W = 960, L = 200, T = 150, cw = (W - L - 20) / cols.length, rh = 24, Hh = T + ids.length * rh + 40;
+  const s = fig("f-matrix", "Hard ten, task by task", "Each column is one harness submission; each row one of the ten hard instances. Filled green resolved, red unresolved. Published entries from the official experiments repository.", W, Hh, [["var(--good)", "resolved"], ["var(--bad)", "unresolved"]]);
+  cols.forEach((c, j) => {
+    const x = L + j * cw + cw / 2;
+    const t = svg("text", { x: x, y: T - 10, class: "lbl" + (c.me ? " strong" : ""), transform: `rotate(-38 ${x} ${T - 10})`, "text-anchor": "start", "font-size": "11" }, s); t.textContent = c.name;
+    const n = svg("text", { x: x, y: Hh - 14, class: "lbl" + (c.me ? " strong" : ""), "text-anchor": "middle" }, s); n.textContent = c.hard.size + "/10";
+  });
+  if (cols.length) svg("rect", { x: L, y: T - 4, width: cw, height: ids.length * rh + 4, fill: "var(--accent-soft)", rx: 4 }, s);
+  ids.forEach((id, i) => {
+    const y = T + i * rh;
+    const lab = svg("text", { x: L - 10, y: y + 15, class: "lbl strong", "text-anchor": "end" }, s); lab.textContent = short(id);
+    cols.forEach((c, j) => {
+      const ok = c.hard.has(id);
+      const r = svg("rect", { x: L + j * cw + 3, y: y + 3, width: cw - 6, height: rh - 6, rx: 3, fill: ok ? "var(--good)" : "var(--bad)", opacity: ok ? .9 : .55 }, s);
+      hover(r, `${c.name}\n${id}\n${ok ? "resolved" : "unresolved"}`);
+    });
+  });
+})();
+
+// ---- Fig: emphasis bars hard10 per harness (all entries)
+(function () {
+  const rows = HS.map(h => ({ name: nice(h.dir), hard: h.hard10, easy: h.easy10, me: false })).concat([{ name: "tinyorbit · Claude Opus 5", hard: H.resolved, easy: E.resolved, me: true }]).sort((a, b) => b.hard - a.hard || b.easy - a.easy);
+  const W = 960, L = 330, R = 60, rh = 22, H0 = 34, Hh = H0 + rows.length * rh + 10, cw = 260, gap = 50;
+  const s = fig("f-hardbar", "Resolved count on tinyorbit's twenty instances, every published submission", "Left: the ten hard instances. Right: the ten easy ones. tinyorbit highlighted; all others run older models.", W, Hh, [["var(--accent)", "tinyorbit, Opus 5"], ["var(--gray-mark)", "published submissions, older models"]]);
+  [["hard", L], ["easy", L + cw + gap]].forEach(([key, x0]) => {
+    const x = v => x0 + v / 10 * cw;
+    [0, 2, 4, 6, 8, 10].forEach(v => { svg("line", { x1: x(v), x2: x(v), y1: H0 - 8, y2: Hh - 10, class: "grid" }, s); const t = svg("text", { x: x(v), y: H0 - 14, class: "axis", "text-anchor": "middle" }, s); t.textContent = v; });
+    const cap = svg("text", { x: x0, y: H0 - 26, class: "eyebrow", fill: "var(--ink-3)", "font-size": "11" }, s); cap.textContent = key === "hard" ? "HARD 10 RESOLVED" : "EASY 10 RESOLVED";
+    rows.forEach((r, i) => {
+      const y = H0 + i * rh;
+      if (key === "hard") { const lab = svg("text", { x: L - 10, y: y + 14, class: "lbl" + (r.me ? " strong" : ""), "text-anchor": "end" }, s); lab.textContent = r.name; }
+      const b = svg("rect", { x: x(0), y: y + 4, width: Math.max(2, x(r[key]) - x(0)), height: rh - 10, rx: 3, fill: r.me ? "var(--accent)" : "var(--gray-mark)" }, s);
+      const v = svg("text", { x: x(r[key]) + 6, y: y + 14, class: "lbl" + (r.me ? " strong" : "") }, s); v.textContent = r[key];
+      hover(b, `${r.name}\n${key} ten: ${r[key]} / 10`);
+    });
+  });
+})();
+
+// harness table
+(function () {
+  const rows = HS.map(h => ({ name: nice(h.dir), agent: h.agent || "", full: h.full_pct, usd: h.usd_per_inst, calls: h.calls_per_inst, easy: h.easy10, hard: h.hard10, misses: h.hard_misses, me: false, dir: h.dir }))
+    .concat([{ name: "tinyorbit · Claude Opus 5", agent: "tinyorbit", full: null, usd: spend / 20, calls: (E.total_calls + H.total_calls) / 20, easy: E.resolved, hard: H.resolved, misses: H.tasks.filter(t => !t.resolved).map(t => t.instance_id), me: true }])
+    .sort((a, b) => b.hard - a.hard || b.easy - a.easy);
+  document.getElementById("t-harness").innerHTML = `<tr><th>submission</th><th class="n">full 500</th><th class="n">$ / instance</th><th class="n">calls / instance</th><th class="n">easy 10</th><th class="n">hard 10</th><th>hard misses</th></tr>` +
+    rows.map(r => `<tr class="${r.me ? "hi" : ""}"><td>${r.name}${r.me ? "" : ` <span class="pill dim">${r.dir.slice(0, 4)}-${r.dir.slice(4, 6)}</span>`}</td><td class="n">${r.full ? r.full.toFixed(1) + "%" : "n/a"}</td><td class="n">${r.usd ? "$" + r.usd.toFixed(2) : "n/a"}</td><td class="n">${r.calls ? r.calls.toFixed(1) : "n/a"}</td><td class="n">${r.easy}</td><td class="n"><b>${r.hard}</b></td><td class="mono" style="font-size:12px">${r.misses.map(short).join(", ")}</td></tr>`).join("");
+  document.getElementById("t-agg").innerHTML = `<tr><th>system</th><th>harness</th><th class="n">SWE-bench Verified</th><th>notes</th></tr>` +
+    AGG.map(([a, b, c, d, u]) => `<tr><td>${a}</td><td>${b}</td><td class="n">${c}</td><td>${d} · <a href="${u}">source</a></td></tr>`).join("") +
+    `<tr class="hi"><td>tinyorbit · Claude Opus 5</td><td>this record</td><td class="n">17 / 20 sampled</td><td>not a full-set number; see the task-level comparison above</td></tr>`;
+})();
+</script>

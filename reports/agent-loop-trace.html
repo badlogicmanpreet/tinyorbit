@@ -1,0 +1,900 @@
+<title>Inside the Agent Loop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@600;700;900&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+:root{
+  color-scheme:light;
+  --bg:#f4f6f9; --panel:#ffffff; --panel-2:#eaeef4; --panel-3:#dde3ec;
+  --line:#ccd4e0; --line-2:#adb8c8;
+  --ink:#111721; --ink-2:#495468; --ink-3:#78849a;
+  --harness:#2a78d6; --harness-ink:#1c5cab; --harness-soft:#dde9fa;
+  --model:#eb6834; --model-ink:#b64а1e; --model-ink:#b04a1f; --model-soft:#fbe6dc;
+  --tool:#1baf7a; --tool-ink:#117853; --tool-soft:#d9f2e8;
+  --wire:#8f9cb0;
+  --ok:#1b7f3b; --warn:#b8770a;
+  --shadow:0 1px 2px rgba(17,23,33,.06),0 8px 24px -12px rgba(17,23,33,.18);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#141922; --panel:#1b212c; --panel-2:#222936; --panel-3:#2b3341;
+    --line:#323b4a; --line-2:#46526440; --line-2:#465264;
+    --ink:#e9edf3; --ink-2:#a9b4c4; --ink-3:#7b8698;
+    --harness:#3987e5; --harness-ink:#86b6ef; --harness-soft:#16253a;
+    --model:#d95926; --model-ink:#f0916a; --model-soft:#331c12;
+    --tool:#199e70; --tool-ink:#5cc9a3; --tool-soft:#11302a;
+    --wire:#5d6a7e;
+    --ok:#4fbf6f; --warn:#e0a03a;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#141922; --panel:#1b212c; --panel-2:#222936; --panel-3:#2b3341;
+  --line:#323b4a; --line-2:#465264;
+  --ink:#e9edf3; --ink-2:#a9b4c4; --ink-3:#7b8698;
+  --harness:#3987e5; --harness-ink:#86b6ef; --harness-soft:#16253a;
+  --model:#d95926; --model-ink:#f0916a; --model-soft:#331c12;
+  --tool:#199e70; --tool-ink:#5cc9a3; --tool-soft:#11302a;
+  --wire:#5d6a7e;
+  --ok:#4fbf6f; --warn:#e0a03a;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.7);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16.5px/1.6 "Source Sans 3",system-ui,-apple-system,Segoe UI,sans-serif;
+  padding-inline:clamp(16px,4vw,44px);padding-block:0 90px}
+.wrap{max-width:1060px;margin:0 auto}
+.prose{max-width:68ch}
+h1,h2,h3,h4{font-family:Chivo,"Source Sans 3",sans-serif;margin:0;text-wrap:balance;line-height:1.1}
+h1{font-size:clamp(32px,5.2vw,54px);font-weight:900;letter-spacing:-.025em}
+h2{font-size:clamp(21px,2.7vw,27px);font-weight:700;letter-spacing:-.01em}
+h3{font-size:17px;font-weight:700;margin-top:26px}
+h4{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+p{margin:12px 0}
+a{color:var(--harness-ink);text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--harness-ink) 35%,transparent)}
+a:hover{border-bottom-color:currentColor}
+a:focus-visible,button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--harness);outline-offset:2px;border-radius:3px}
+.mono,code,.k,.t{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+code{font-size:.87em;background:var(--panel-2);padding:1px 5px;border-radius:3px;border:1px solid var(--line)}
+.eyebrow{font-family:"JetBrains Mono",monospace;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+
+/* header */
+header{padding-block:58px 10px}
+.rule{height:3px;background:linear-gradient(90deg,var(--harness) 0 28%,var(--model) 28% 62%,var(--tool) 62% 100%);border-radius:2px;max-width:230px}
+.lede{font-size:19.5px;color:var(--ink-2);max-width:60ch;margin-top:18px}
+.facts{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}
+.fact{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:5px 13px;font-family:"JetBrains Mono",monospace;font-size:12.5px;color:var(--ink-2)}
+.fact b{color:var(--ink);font-weight:500}
+section{margin-top:72px}
+.sechead{display:flex;align-items:baseline;gap:14px;border-top:1px solid var(--line);padding-top:20px;flex-wrap:wrap}
+.sechead .num{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--ink-3);letter-spacing:.1em}
+
+/* panels */
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow)}
+.pad{padding:clamp(14px,2.4vw,22px)}
+.note{border-left:3px solid var(--harness);background:var(--panel-2);padding:12px 16px;margin:18px 0;font-size:15.5px;border-radius:0 6px 6px 0}
+.note.model{border-left-color:var(--model)}
+.note.tool{border-left-color:var(--tool)}
+.note.warn{border-left-color:var(--warn)}
+pre{background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow-x:auto;
+  font:12.8px/1.62 "JetBrains Mono",monospace;margin:14px 0}
+pre .c{color:var(--ink-3)}
+pre .kw{color:var(--model-ink);font-weight:500}
+pre .s{color:var(--tool-ink)}
+pre .hl{background:var(--harness-soft);display:inline-block;border-radius:3px;padding:0 3px;margin:0 -3px}
+
+/* cycle diagram */
+.cycle{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:26px;align-items:center;margin-top:22px}
+@media (max-width:820px){.cycle{grid-template-columns:1fr}}
+.stagelist{display:flex;flex-direction:column;gap:2px}
+.stage{display:grid;grid-template-columns:26px 1fr;gap:12px;padding:11px 12px;border-radius:8px;border:1px solid transparent;transition:background .25s,border-color .25s}
+.stage .sn{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--ink-3);padding-top:3px}
+.stage b{font-family:Chivo,sans-serif;font-size:15px}
+.stage p{margin:2px 0 0;font-size:14.2px;color:var(--ink-2);line-height:1.45}
+.stage.on{background:var(--panel-2);border-color:var(--line)}
+.stage.on .sn{color:var(--ink)}
+
+/* call strip */
+.strip{display:flex;gap:4px;flex-wrap:wrap;margin-top:16px}
+.chip{font-family:"JetBrains Mono",monospace;font-size:12px;min-width:40px;padding:7px 4px 6px;border-radius:6px;border:1px solid var(--line);
+  background:var(--panel);color:var(--ink-2);cursor:pointer;text-align:center;line-height:1.2;position:relative;transition:transform .12s,border-color .15s}
+.chip:hover{border-color:var(--line-2);transform:translateY(-1px)}
+.chip .th{display:block;height:3px;border-radius:2px;margin-top:5px;background:var(--panel-3)}
+.chip.think .th{background:var(--model)}
+.chip[aria-pressed="true"]{background:var(--harness);border-color:var(--harness);color:#fff;font-weight:700}
+.chip[aria-pressed="true"] .th{background:rgba(255,255,255,.55)}
+
+/* transport */
+.transport{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:16px}
+button.btn{font-family:"JetBrains Mono",monospace;font-size:13px;padding:8px 15px;border-radius:7px;border:1px solid var(--line);
+  background:var(--panel);color:var(--ink);cursor:pointer;transition:background .15s,border-color .15s}
+button.btn:hover{background:var(--panel-2);border-color:var(--line-2)}
+button.btn.primary{background:var(--harness);border-color:var(--harness);color:#fff;font-weight:700}
+button.btn.primary:hover{background:var(--harness-ink);border-color:var(--harness-ink)}
+.speed{display:flex;gap:0;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.speed button{font-family:"JetBrains Mono",monospace;font-size:12px;padding:8px 11px;border:0;background:var(--panel);color:var(--ink-2);cursor:pointer}
+.speed button[aria-pressed="true"]{background:var(--panel-3);color:var(--ink);font-weight:700}
+
+/* connection bar */
+.conn{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;margin-top:16px;padding:12px 16px;border-radius:9px;
+  background:var(--panel-2);border:1px solid var(--line);font-family:"JetBrains Mono",monospace;font-size:12.5px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--ok);display:inline-block;margin-right:7px;vertical-align:0px;
+  box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 60%,transparent);animation:pulse 2.2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 55%,transparent)}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
+.conn .st{color:var(--ink);font-weight:500}
+.conn .sep{color:var(--line-2)}
+.conn.idle .dot{background:var(--model);animation-duration:1.1s}
+
+/* wire */
+.wire{position:relative;margin-top:20px;padding-left:0}
+.wire .spine{position:absolute;left:calc(var(--sx) - 1px);top:6px;bottom:6px;width:2px;background:var(--line);border-radius:1px}
+.wire{--sx:154px}
+@media (max-width:720px){.wire{--sx:58px}}
+.row{position:relative;display:grid;grid-template-columns:var(--sx) 1fr;min-height:34px;align-items:start}
+.row .lt{text-align:right;padding-right:20px;font-family:"JetBrains Mono",monospace;font-size:11.5px;color:var(--ink-3);padding-top:9px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .rt{padding-left:20px;padding-block:4px}
+.node{position:absolute;left:calc(var(--sx) - 6px);top:11px;width:12px;height:12px;border-radius:50%;background:var(--panel);
+  border:2px solid var(--wire);z-index:2;transition:background .2s,border-color .2s,transform .2s}
+.row.m .node{border-color:var(--model)}
+.row.h .node{border-color:var(--harness)}
+.row.on .node{background:var(--model);border-color:var(--model);transform:scale(1.3)}
+.row.h.on .node{background:var(--harness);border-color:var(--harness)}
+.evt{display:inline-flex;align-items:center;gap:9px;flex-wrap:wrap;padding:5px 11px;border-radius:7px;border:1px solid var(--line);
+  background:var(--panel);font-family:"JetBrains Mono",monospace;font-size:12.4px;transition:border-color .2s,background .2s,box-shadow .2s}
+.row.on .evt{border-color:var(--model);box-shadow:0 0 0 3px var(--model-soft)}
+.row.h.on .evt{border-color:var(--harness);box-shadow:0 0 0 3px var(--harness-soft)}
+.row.done .evt{opacity:.62}
+.evt .tag{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3)}
+.evt .meta{color:var(--ink-2);font-size:11.5px}
+.evt b{font-weight:500}
+.arrow{font-size:13px;color:var(--wire)}
+.gap{position:relative;display:grid;grid-template-columns:var(--sx) 1fr;align-items:center}
+.gap .bar{position:absolute;left:calc(var(--sx) - 1px);width:2px;top:0;bottom:0;
+  background:repeating-linear-gradient(180deg,var(--line-2) 0 3px,transparent 3px 8px)}
+.gap.big .bar{background:repeating-linear-gradient(180deg,var(--model) 0 4px,transparent 4px 9px)}
+.gap .lab{grid-column:2;padding-left:20px;font-family:"JetBrains Mono",monospace;font-size:11.5px;color:var(--ink-3)}
+.gap.big .lab{color:var(--model-ink)}
+.gap.run .lab{color:var(--model-ink);font-weight:700}
+
+/* panes */
+.panes{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:18px}
+@media (max-width:860px){.panes{grid-template-columns:1fr}}
+.pane{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;display:flex;flex-direction:column}
+.pane .hd{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 14px;background:var(--panel-2);
+  border-bottom:1px solid var(--line);font-family:"JetBrains Mono",monospace;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3)}
+.pane .hd .badge{text-transform:none;letter-spacing:0;padding:2px 8px;border-radius:999px;background:var(--panel-3);color:var(--ink-2);font-size:11px}
+.pane .bd{padding:14px;font-family:"JetBrains Mono",monospace;font-size:12.6px;line-height:1.62;overflow-x:auto;flex:1;min-height:112px}
+.pane.think .hd{background:var(--model-soft);color:var(--model-ink)}
+.pane.think .bd{color:var(--ink);font-family:"Source Sans 3",sans-serif;font-size:15.5px;line-height:1.62;font-style:italic}
+.pane.tool .hd{background:var(--tool-soft);color:var(--tool-ink)}
+.caret{display:inline-block;width:8px;height:1.05em;background:var(--model);vertical-align:-2px;animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+.empty{color:var(--ink-3);font-style:normal;font-family:"JetBrains Mono",monospace;font-size:12.4px}
+.res{white-space:pre-wrap;word-break:break-word;color:var(--ink-2);margin:0}
+.res .first{color:var(--ink)}
+
+/* meters */
+.meters{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:16px}
+.meter{background:var(--panel);padding:12px 14px}
+.meter .l{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.meter .v{font-family:"JetBrains Mono",monospace;font-size:21px;font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums}
+.meter .v small{font-size:11.5px;font-weight:400;color:var(--ink-3)}
+.meter.cache .v{color:var(--harness-ink)}
+.meter.fresh .v{color:var(--model-ink)}
+
+/* history strip */
+.hist{display:flex;gap:2px;flex-wrap:wrap;margin-top:12px}
+.hb{height:22px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-family:"JetBrains Mono",monospace;font-size:9.5px;color:#fff;min-width:11px}
+.hb.u{background:var(--harness)}
+.hb.a{background:var(--model)}
+.hb.t{background:var(--tool)}
+.hb.k{background:var(--wire)}
+
+/* tables + charts */
+.tscroll{overflow-x:auto;margin-top:16px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--line)}
+th{font-family:"JetBrains Mono",monospace;font-weight:500;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);background:var(--panel-2)}
+td.n,th.n{text-align:right}
+tr:last-child td{border-bottom:0}
+tr.think td{background:var(--model-soft)}
+.fig{margin-top:20px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 16px 12px}
+.fig .ft{font-family:Chivo,sans-serif;font-weight:700;font-size:15px}
+.fig .fs{font-size:13.5px;color:var(--ink-2);margin-top:2px}
+.fig svg{display:block;width:100%;height:auto;margin-top:12px;overflow:visible}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-family:"JetBrains Mono",monospace;font-size:11.5px;color:var(--ink-2);margin-top:10px}
+.legend i{width:10px;height:10px;border-radius:2px;display:inline-block;margin-right:6px}
+.ax{font-family:"JetBrains Mono",monospace;font-size:10.5px;fill:var(--ink-3)}
+.lb{font-family:"JetBrains Mono",monospace;font-size:11px;fill:var(--ink-2)}
+.gl{stroke:var(--line);stroke-width:1}
+ul{padding-left:20px}li{margin:7px 0}
+.foot{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);font-size:13.5px;color:var(--ink-3)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="rule"></div>
+  <div class="eyebrow" style="margin-top:18px">Instrumented capture · 2026-09-13</div>
+  <h1>Inside the Agent Loop</h1>
+  <p class="lede">One SWE-bench task, traced at the wire. Every HTTP stream event, every adaptive-thinking pause, and every byte of history resent between turns, recorded from a real run and replayed here.</p>
+  <div class="facts">
+    <span class="fact">task <b>django__django-14672</b></span>
+    <span class="fact">model <b>claude-opus-5</b></span>
+    <span class="fact">turns <b>19</b></span>
+    <span class="fact">SSE events <b id="f-ev">–</b></span>
+    <span class="fact">wall clock <b>60s</b></span>
+    <span class="fact">cost <b>$0.22</b></span>
+  </div>
+  <div class="note" style="margin-top:26px">
+    <b>What this is.</b> tinyorbit is a 1,100-line terminal coding agent. It was given a Django bug report inside a container and left alone. It read code, edited a file, wrote a test, ran the suite, and stopped. To document the loop, the transport was instrumented to append one JSON line per stream event, and the task was re-run with the model's reasoning summaries switched on. Everything below is that recording. No step is illustrative.
+  </div>
+</header>
+
+<section id="loop">
+  <div class="sechead"><span class="num">01</span><h2>The loop</h2></div>
+  <div class="prose"><p>The harness owns the loop. The model never runs anything; it emits a request to run something, and the loop decides whether to honor it. One pass through these five stages is one <em>turn</em>. This task took nineteen.</p></div>
+  <div class="cycle">
+    <div class="panel pad">
+      <svg id="ring" viewBox="0 0 340 300" role="img" aria-label="The five stages of one turn, arranged as a cycle"></svg>
+    </div>
+    <div class="stagelist" id="stages"></div>
+  </div>
+  <pre id="skeleton"></pre>
+  <div class="note"><b>The invariant that makes it work.</b> Every <code>tool_use</code> block the model emits must be answered by a <code>tool_result</code> block with the same id, in the very next message. If the user interrupts mid-batch, the loop still synthesizes results for the unanswered calls before it exits. A history with an orphaned tool call is rejected by the API, so this is not politeness, it is the protocol.</div>
+</section>
+
+<section id="connect">
+  <div class="sechead"><span class="num">02</span><h2>The first connection</h2></div>
+  <div class="prose">
+    <p>Before any of that, one HTTPS connection is opened to <code>api.anthropic.com</code> and kept for the whole task. The client is built once, with SDK-level retries disabled so the loop owns its own retry policy and can report it as a visible event rather than a silent stall.</p>
+  </div>
+  <pre id="conncode"></pre>
+  <div class="prose">
+    <p>The first request carries everything the model will ever be told about how to behave: a cached system prefix, a dynamic tail, six tool schemas, and the issue text. The trace recorded its exact shape.</p>
+  </div>
+  <div class="panes">
+    <div class="pane">
+      <div class="hd"><span>POST /v1/messages · request 1</span><span class="badge" id="req1-badge">–</span></div>
+      <div class="bd" id="req1"></div>
+    </div>
+    <div class="pane">
+      <div class="hd"><span>Time to first byte, all 19 calls</span><span class="badge">ms</span></div>
+      <div class="bd" style="padding:8px 6px 4px"><svg id="ttfb" viewBox="0 0 460 190" role="img" aria-label="Time to first byte for each of the nineteen calls"></svg></div>
+    </div>
+  </div>
+  <div class="note"><b>Connection reuse, measured.</b> Call 1 waited <b id="c1">–</b> for its first byte. Calls 2 through 19 averaged <b id="crest">–</b>. The gap is roughly the DNS lookup, TCP handshake and TLS negotiation that only the first call pays, after which the pooled connection is warm. Call 1 also wrote 4,689 tokens into the prompt cache, so part of that difference is server-side work, not network. One sample, two causes: treat it as consistent with connection reuse rather than proof of it.</div>
+</section>
+
+<section id="replay">
+  <div class="sechead"><span class="num">03</span><h2>The wire, replayed</h2></div>
+  <div class="prose">
+    <p>This is the centerpiece. Pick a turn and press play: the events below arrive in the order and at the intervals they actually arrived, straight from the trace file. Turns marked with an orange bar are the ones where the model chose to think.</p>
+  </div>
+  <div class="strip" id="strip" role="group" aria-label="Select a turn"></div>
+  <div class="transport">
+    <button class="btn primary" id="play">▶ Play turn</button>
+    <button class="btn" id="reset">Reset</button>
+    <div class="speed" role="group" aria-label="Playback speed">
+      <button data-sp="1" aria-pressed="false">1×</button>
+      <button data-sp="4" aria-pressed="true">4×</button>
+      <button data-sp="12" aria-pressed="false">12×</button>
+    </div>
+    <span class="eyebrow" id="clock">t = 0 ms</span>
+  </div>
+  <div class="conn" id="conn">
+    <span><span class="dot"></span><span class="st" id="connstate">connection open</span></span>
+    <span class="sep">│</span><span>HTTP/1.1 · <b class="st">text/event-stream</b></span>
+    <span class="sep">│</span><span>bytes in <b class="st" id="bytesin">0</b></span>
+    <span class="sep">│</span><span id="connhint" style="color:var(--ink-3)">one response, held open for the whole turn</span>
+  </div>
+  <div class="wire panel pad" id="wire" style="margin-top:14px"><div class="spine"></div></div>
+  <div class="panes">
+    <div class="pane think">
+      <div class="hd"><span>thinking block · display = summarized</span><span class="badge" id="think-badge">–</span></div>
+      <div class="bd" id="thinkpane"></div>
+    </div>
+    <div class="pane tool">
+      <div class="hd"><span id="toolhd">tool call</span><span class="badge" id="tool-badge">–</span></div>
+      <div class="bd" id="toolpane"></div>
+    </div>
+  </div>
+  <div class="meters" id="meters"></div>
+</section>
+
+<section id="thinking">
+  <div class="sechead"><span class="num">04</span><h2>Adaptive thinking on the wire</h2></div>
+  <div class="prose">
+    <p>The harness asks for <code>thinking: {type: "adaptive"}</code> on every single call. It never asks for a fixed budget. The model decides per call whether to think at all, and it declined on fourteen of nineteen. Thinking appeared exactly where the work got confusing.</p>
+  </div>
+  <div class="fig" id="f-think"></div>
+  <div class="prose">
+    <p>Those five summaries, in full, are the agent's actual reasoning at its five hardest moments:</p>
+  </div>
+  <div id="thinklist"></div>
+  <h3>What the socket is doing while the model thinks</h3>
+  <div class="prose">
+    <p>This is the question the trace was built to answer. The sequence on a thinking call is always the same shape:</p>
+  </div>
+  <div class="panel pad" style="margin-top:16px">
+    <svg id="gapfig" viewBox="0 0 900 200" role="img" aria-label="Timeline of one thinking call showing the silent interval on an open connection"></svg>
+  </div>
+  <div class="note model">
+    <b>The connection stays open and idle, then floods.</b> The server sends <code>message_start</code>, then immediately <code>content_block_start</code> announcing a thinking block. Then nothing crosses the wire for <b id="gaprange">–</b>. The socket is open the entire time; no keepalive is needed at this scale and no timeout fires. When the model finishes reasoning, the whole summary lands in a burst of deltas averaging <b id="burstgap">–</b> apart. Across all 1,373 events in this task the median inter-event gap was <b id="medgap">–</b>, and the longest was <b id="maxgap">–</b>, during that thinking pause.
+  </div>
+  <div class="prose">
+    <p>So streaming here does not mean the reasoning trickles out as it is produced. It means the response is one long-lived HTTP body that the server writes into whenever it has something, and the client can act on partial content the moment it arrives. For the agent this matters most on the last call, where the answer text streams to the terminal token by token while the model is still writing it.</p>
+    <p>Two properties of thinking blocks are easy to miss and both are visible in the trace. The raw chain of thought is never returned by the API on this model: <code>display: "summarized"</code> yields a readable precis, and the default, <code>"omitted"</code>, yields a block whose text is an empty string. Either way the block carries a cryptographic <b>signature</b> and is billed as output tokens. The harness must replay those blocks back verbatim on the next request, which it does by appending the response content unmodified.</p>
+  </div>
+  <div class="note warn"><b>A finding from this exercise.</b> The ten-instance benchmark runs used the default, so every thinking block came back with empty text, and the terminal renderer that exists to display reasoning never fired once. Thinking still happened and was still billed. Turning on summaries cost nothing extra and made the agent's reasoning legible, which is why this capture uses it.</div>
+</section>
+
+<section id="context">
+  <div class="sechead"><span class="num">05</span><h2>What gets resent every turn</h2></div>
+  <div class="prose">
+    <p>The API is stateless. The model remembers nothing between calls, so the harness resends the entire conversation every time. Turn 19 shipped all thirty-seven messages again. The history grows by exactly two messages per turn: the assistant's reply, then one user message holding the tool results.</p>
+  </div>
+  <div class="fig" id="f-hist"></div>
+  <div class="prose">
+    <p>Resending everything should be ruinously expensive, and it would be without a prompt cache. The system prefix carries a cache breakpoint, and each turn's request is a strict extension of the previous one, so the shared prefix is served from cache at a tenth of the input price.</p>
+  </div>
+  <div class="fig" id="f-cache"></div>
+  <div class="note">
+    <b>Two tokens.</b> On every one of the nineteen calls, uncached input was exactly <b>2 tokens</b> while cache reads climbed from zero to 12,039. That number is the tell: <code>input_tokens</code> counts only what falls after the last cache breakpoint, so a steady 2 means the cache matched the entire prefix every time. Total billed input across the whole task was 12,039 cache reads plus 11,669 cache writes plus 38 fresh tokens.
+  </div>
+  <h3>Why the boundary is drawn where it is</h3>
+  <div class="prose">
+    <p>Caching is a prefix match, so one changed byte anywhere before the breakpoint invalidates everything after it. The system prompt is therefore split in two.</p>
+  </div>
+  <pre id="promptcode"></pre>
+  <div class="prose">
+    <p>Identity, tool guidance and the working directory are fixed for the session and sit above the line. Today's date sits below it, because a prompt that interpolates a clock into its cached block silently destroys its own cache on every call. This is the single most common way a cache hit rate collapses.</p>
+    <p>There is a second, larger layer the harness would reach for if this task had run long enough. Above 150,000 context tokens it asks the model to summarize the conversation and replaces the history with that summary. It also catches a prompt-too-long error, compacts once and retries. Neither fired here. The largest request in this task was about 12,000 tokens, roughly one percent of the window.</p>
+  </div>
+</section>
+
+<section id="tools">
+  <div class="sechead"><span class="num">06</span><h2>Coming back down</h2></div>
+  <div class="prose">
+    <p>When the stream closes with <code>stop_reason: "tool_use"</code>, control returns to the harness. It groups the calls, checks each against the permission policy, runs them, and formats the output back into the shape the API expects.</p>
+  </div>
+  <div class="tscroll"><table id="t-tools"></table></div>
+  <div class="prose">
+    <p>The model asked for a single tool per turn on all eighteen tool turns, so the concurrency machinery never engaged. It exists: consecutive calls are partitioned into groups, and a group whose members are all concurrency-safe runs under one gather. A Bash command is classified by splitting on pipes and <code>&amp;&amp;</code> and checking that every segment starts with a known reader and carries no redirect, which decides both whether it needs permission and whether it may run in parallel.</p>
+    <p>Under <code>bypassPermissions</code>, used here because the container is disposable and nobody is watching, the permission chain short-circuits before it consults any rule. In an interactive session the same call would stop and ask.</p>
+  </div>
+  <div class="note tool"><b>The detour worth reading.</b> Turns 5 through 12 are the agent failing to run Django's test suite. It tried the system Python, then the repository root, then a <code>PYTHONPATH</code> override, then went looking for interpreters, and finally found the conda environment at <code>/opt/miniconda3/envs/testbed</code>. Eight turns, roughly forty percent of the task, spent on an environment detail no line of the prompt mentioned. Its own reasoning on turn 9 shows it forming the hypothesis that led out.</div>
+</section>
+
+<section id="stop">
+  <div class="sechead"><span class="num">07</span><h2>How it ends</h2></div>
+  <div class="prose">
+    <p>Every turn's exit is decided by one field. <code>stop_reason</code> came back as <code>tool_use</code> eighteen times and <code>end_turn</code> once, and that nineteenth call is the only one whose content held no tool call. No tool call plus no pause means the work is finished: the loop emits a terminal event carrying the full message history and returns.</p>
+  </div>
+  <div class="tscroll"><table id="t-stop"></table></div>
+  <div class="prose">
+    <p>The other terminal reasons never fired here but shape the design. An output cut off at the token cap is retried once at a larger cap, then nudged with a continue instruction up to three times. A refusal is terminal and carries its category. An interrupt while streaming exits immediately; an interrupt during tools exits only after every orphaned call has been answered. A turn counter caps the whole thing at sixty.</p>
+  </div>
+  <div class="panel pad" style="margin-top:18px">
+    <h4 style="margin-bottom:10px">Final message, turn 19</h4>
+    <div class="mono" id="finaltext" style="font-size:13.4px;line-height:1.7;white-space:pre-wrap"></div>
+  </div>
+  <div class="note"><b>Verdict.</b> The patch was scored by the official SWE-bench evaluator against Django's hidden tests: both the four failing tests the issue describes and the full regression list passed. One file changed, one test added, 1,740 characters of diff, sixty seconds, twenty-two cents.</div>
+</section>
+
+<section id="repro">
+  <div class="sechead"><span class="num">08</span><h2>Reading the trace yourself</h2></div>
+  <div class="prose">
+    <p>The instrumentation is a single environment variable. Setting it makes the transport append one JSON line per stream event; leaving it unset costs nothing.</p>
+  </div>
+  <pre id="repro"></pre>
+  <div class="prose">
+    <p>Each line carries a millisecond offset from the request, the event type, the delta type, its character count and its text. Request lines additionally carry the full shape of the history about to be resent, every message as a role plus its block types and sizes, which is where the context figures on this page come from. Response lines carry the usage ledger and stop reason.</p>
+    <p class="foot">Captured 2026-09-13 from tinyorbit at commit 2a0a598 with the tracing patch, running <code>claude-opus-5</code> inside the SWE-bench evaluation image for django__django-14672 on Docker 29.7 under x86 emulation. 1,411 trace records, 1,373 of them stream events. The wire replay above is driven directly by that file; timings are as recorded at the SDK's event boundary, so they include client-side parse time but not kernel buffering.</p>
+  </div>
+</section>
+</div>
+
+<script>
+const D = {"instance": "django__django-14672", "repo": "django/django", "captured": "2026-09-13T15:26Z", "model": "claude-opus-5", "settings": {"thinking": "adaptive, display=summarized", "effort": "default (high)", "max_tokens": 16000, "fallbacks": "server-side default", "cache_control": "ephemeral, auto", "tools": ["Read", "Write", "Edit", "Bash", "Glob", "Grep"], "permission_mode": "bypassPermissions", "max_turns": 60}, "system": [{"chars": 771, "cached": true}, {"chars": 24, "cached": false}], "user_prompt": "You are working in a git checkout of django/django at /testbed. Below is a GitHub issue filed against this repository.\n\n<issue>\nMissing call `make_hashable` on `through_fields` in `ManyToManyRel`\nDescription\n\t\nIn 3.2 identity property has been added to all ForeignObjectRel to make it possible to compare them. A hash is derived from said identity and it's possible because identity is a tuple. To make limit_choices_to hashable (one of this tuple elements), \u200bthere's a call to make_hashable.\nIt happens that through_fields can be a list. In such case, this make_hashable call is missing in \u200bManyToManyRel.\nFor some reason it only fails on checking proxy model. I think proxy models have 29 checks and normal ones 24, hence the issue, but that's just a guess.\nMinimal repro:\nclass Parent(models.Model):\n\tname = models.CharField(max_length=256)\nclass ProxyParent(Parent):\n\tclass Meta:\n\t\tproxy = True\nclass Child(models.Model):\n\tparent = models.ForeignKey(Parent, on_delete=models.CASCADE)\n\tmany_to_many_field = models.ManyToManyField(\n\t\tto=Parent,\n\t\tthrough=\"ManyToManyModel\",\n\t\tthrough_fields=['child', 'parent'],\n\t\trelated_name=\"something\"\n\t)\nclass ManyToManyModel(models.Model):\n\tparent = models.ForeignKey(Parent, on_delete=models.CASCADE, related_name='+')\n\tchild = models.ForeignKey(Child, on_delete=models.CASCADE, related_name='+')\n\tsecond_child = models.ForeignKey(Child, on_delete=models.CASCADE, null=True, default=None)\nWhich will result in \n File \"manage.py\", line 23, in <module>\n\tmain()\n File \"manage.py\", line 19, in main\n\texecute_from_command_line(sys.argv)\n File \"/home/tom/PycharmProjects/broken_m2m_project/venv/lib/python3.8/site-packages/django/core/management/__init__.py\", line 419, in execute_from_command_line\n\tutility.execute()\n File \"/home/tom/PycharmProjects/broken_m2m_project/venv/lib/python3.8/site-packages/django/core/management/__init__.py\", line 413, in execute\n\tself.fetch_command(subcommand).run_from_argv(self.argv)\n File \"/home/tom/PycharmProjects/broken_m2m_project/venv/lib/python3.8/site-packages/django/core/management/base.py\", line 354, in run_from_argv\n\tself.execute(*args, **cmd_options)\n File \"/home/tom/PycharmProjects/broken_m2m_project/venv/lib/python3.8/site-packages/django/core/management/base.py\", line 393, in execute\n\tself.check()\n File \"/home/tom/PycharmProjects/broken_m2m_project/venv/lib/python3.8/site-packages/django/core/management/base.py\", line 419, in check\n\tall_issues = checks.run_checks(\n File \"/home/tom/PycharmProjects/broken_m2m_project/venv/lib/python3.8/site-packages/django/core/checks/registry.py\", line 76, in run_checks\n\tnew_errors = check(app_configs=app_configs, databases=databases)\n File \"/home/tom/PycharmProjects/broken_m2m_project/venv/lib/python3.8/site-packages/django/core/checks/model_checks.py\", line 34, in check_all_models\n\terrors.extend(model.check(**kwargs))\n File \"/home/tom/PycharmProjects/broken_m2m_project/venv/lib/python3.8/site-packages/django/db/models/base.py\", line 1277, in check\n\t*cls._check_field_name_clashes(),\n File \"/home/tom/PycharmProjects/djangbroken_m2m_projectProject/venv/lib/python3.8/site-packages/django/db/models/base.py\", line 1465, in _check_field_name_clashes\n\tif f not in used_fields:\n File \"/home/tom/PycharmProjects/broken_m2m_project/venv/lib/python3.8/site-packages/django/db/models/fields/reverse_related.py\", line 140, in __hash__\n\treturn hash(self.identity)\nTypeError: unhashable type: 'list'\nSolution: Add missing make_hashable call on self.through_fields in ManyToManyRel.\nMissing call `make_hashable` on `through_fields` in `ManyToManyRel`\nDescription\n\t\nIn 3.2 identity property has been added to all ForeignObjectRel to make it possible to compare them. A hash is derived from said identity and it's possible because identity is a tuple. To make limit_choices_to hashable (one of this tuple elements), \u200bthere's a call to make_hashable.\nIt happens that through_fields can be a list. In such case, this make_hashable call is missing in \u200bManyToManyRel.\nFor some reason it only fails on checking proxy model. I think proxy models have 29 checks and normal ones 24, hence the issue, but that's just a guess.\nMinimal repro:\nclass Parent(models.Model):\n\tname = models.CharField(max_length=256)\nclass ProxyParent(Parent):\n\tclass Meta:\n\t\tproxy = True\nclass Child(models.Model):\n\tparent = models.ForeignKey(Parent, on_delete=models.CASCADE)\n\tmany_to_many_field = models.ManyToManyField(\n\t\tto=Parent,\n\t\tthrough=\"ManyToManyModel\",\n\t\tthrough_fields=['child', 'parent'],\n\t\trelated_name=\"something\"\n\t)\nclass ManyToManyModel(models.Model):\n\tparent = models.ForeignKey(Parent, on_delete=models.CASCADE, related_name='+')\n\tchild = models.ForeignKey(Child, on_delete=models.CASCADE, related_name='+')\n\tsecond_child = models.ForeignKey(Child, on_delete=models.CASCADE, null=True, default=None)\nWhich will result in \n File \"manage.py\", line 23, in <module>\n\tmain()\n File \"manage.py\", line 19, in main\n\texecute_from_command_line(sys.argv)\n File \"/home/tom/PycharmProjects/broken_m2m_project/venv/lib/python3.8/site-packages/django/core/management/__init__.py\", line 419, in execute_from_command_line\n\tutility.execute()\n File \"/home/tom/PycharmProjects/broken_m2m_project/venv/lib/python3.8/site-packages/django/core/management/__init__.py\", line 413, in execute\n\tself.fetch_command(subcommand).run_from_argv(self.argv)\n File \"/home/tom/PycharmProjects/broken_m2m_project/venv/lib/python3.8/site-packages/django/core/management/base.py\", line 354, in run_from_argv\n\tself.execute(*args, **cmd_options)\n File \"/home/tom/PycharmProjects/broken_m2m_project/venv/lib/python3.8/site-packages/django/core/management/base.py\", line 393, in execute\n\tself.check()\n File \"/home/tom/PycharmProjects/broken_m2m_project/venv/lib/python3.8/site-packages/django/core/management/base.py\", line 419, in check\n\tall_issues = checks.run_checks(\n File \"/home/tom/PycharmProjects/broken_m2m_project/venv/lib/python3.8/site-packages/django/core/checks/registry.py\", line 76, in run_checks\n\tnew_errors = check(app_configs=app_configs, databases=databases)\n File \"/home/tom/PycharmProjects/broken_m2m_project/venv/lib/python3.8/site-packages/django/core/checks/model_checks.py\", line 34, in check_all_models\n\terrors.extend(model.check(**kwargs))\n File \"/home/tom/PycharmProjects/broken_m2m_project/venv/lib/python3.8/site-packages/django/db/models/base.py\", line 1277, in check\n\t*cls._check_field_name_clashes(),\n File \"/home/tom/PycharmProjects/djangbroken_m2m_projectProject/venv/lib/python3.8/site-packages/django/db/models/base.py\", line 1465, in _check_field_name_clashes\n\tif f not in used_fields:\n File \"/home/tom/PycharmProjects/broken_m2m_project/venv/lib/python3.8/site-packages/django/db/models/fields/reverse_related.py\", line 140, in __hash__\n\treturn hash(self.identity)\nTypeError: unhashable type: 'list'\nSolution: Add missing make_hashable call on self.through_fields in ManyToManyRel.\n\n</issue>\n\nFix the issue. Requirements:\n- Make the smallest change that resolves the issue. Do not refactor unrelated code.\n- Find and run the existing tests that cover the affected code, and confirm they pass after your change. Add a test only if it is clearly needed to verify the fix.\n- Do not commit. Leave the changes in the working tree.\n- When you are done, summarize in a few sentences what you changed and why.\n", "calls": [{"n": 1, "t_total": 2376.4, "n_messages": 1, "history": [{"role": "user", "blocks": [{"type": "text", "chars": 7308}]}], "usage": {"input": 2, "cache_read": 0, "cache_write": 4689, "output": 79}, "stop": "tool_use", "blocks": ["tool_use"], "signature": false, "thinking": "", "tool": {"name": "Bash", "input": {"command": "grep -n \"through_fields\\|make_hashable\" django/db/models/fields/reverse_related.py"}, "id": "toolu_01NAjK2xMMXRFc8MnNzMiiTs", "result": "14:from django.utils.hashable import make_hashable\n126:            make_hashable(self.limit_choices_to),\n290:                 through_fields=None, db_constraint=True):\n302:        if through_fields and not through:\n303:            raise ValueError(\"Cannot specify through_fields without a through model\")\n304:        self.through_fields = through_fields\n313:            self.through_fields,\n323:        if self.through_fields:\n324:            field = opts.get_field(self.through_fields[0])", "result_chars": 489, "is_error": false}, "text": "", "timeline": [{"ev": "message_start", "t": 1427.5, "block": null, "name": null, "stop": null}, {"ev": "content_block_start", "t": 1437.0, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "burst", "delta": "input_json_delta", "n": 16, "chars": 100, "start": 1437.5, "end": 2338.8}, {"ev": "content_block_stop", "t": 2340.7, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "message_delta", "t": 2374.8, "block": null, "name": null, "stop": "tool_use"}, {"ev": "message_stop", "t": 2375.0, "block": null, "name": null, "stop": null}], "ttfb": 1427.5, "events": 37}, {"n": 2, "t_total": 1822.0, "n_messages": 3, "history": [{"role": "user", "blocks": [{"type": "text", "chars": 7308}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 489}]}], "usage": {"input": 2, "cache_read": 4689, "cache_write": 240, "output": 130}, "stop": "tool_use", "blocks": ["tool_use"], "signature": false, "thinking": "", "tool": {"name": "Edit", "input": {"file_path": "django/db/models/fields/reverse_related.py", "old_string": "            self.through_fields,", "new_string": "            make_hashable(self.through_fields),"}, "id": "toolu_012praMPhfJ6zQp1Tq7qxYwQ", "result": "/testbed/django/db/models/fields/reverse_related.py exists but has not been read this session. Read it before modifying it.", "result_chars": 123, "is_error": true}, "text": "", "timeline": [{"ev": "message_start", "t": 862.4, "block": null, "name": null, "stop": null}, {"ev": "content_block_start", "t": 863.5, "block": "tool_use", "name": "Edit", "stop": null}, {"ev": "burst", "delta": "input_json_delta", "n": 28, "chars": 174, "start": 864.2, "end": 1816.9}, {"ev": "content_block_stop", "t": 1817.4, "block": "tool_use", "name": "Edit", "stop": null}, {"ev": "message_delta", "t": 1820.3, "block": null, "name": null, "stop": "tool_use"}, {"ev": "message_stop", "t": 1820.7, "block": null, "name": null, "stop": null}], "ttfb": 862.4, "events": 61}, {"n": 3, "t_total": 1710.5, "n_messages": 5, "history": [{"role": "user", "blocks": [{"type": "text", "chars": 7308}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 489}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 123}]}], "usage": {"input": 2, "cache_read": 4929, "cache_write": 181, "output": 107}, "stop": "tool_use", "blocks": ["tool_use"], "signature": false, "thinking": "", "tool": {"name": "Read", "input": {"file_path": "django/db/models/fields/reverse_related.py", "offset": 305, "limit": 15}, "id": "toolu_01RKMM1JQTxJ44fHRXhHdzWr", "result": "   305\t\n   306\t        self.symmetrical = symmetrical\n   307\t        self.db_constraint = db_constraint\n   308\t\n   309\t    @property\n   310\t    def identity(self):\n   311\t        return super().identity + (\n   312\t            self.through,\n   313\t            self.through_fields,\n   314\t            self.db_constraint,\n   315\t        )\n   316\t\n   317\t    def get_related_field(self):\n   318\t        \"\"\"\n   319\t        Return the field in the 'to' object to which this relationship is tied.\n... 11 more lines. Use offset=320 to continue.", "result_chars": 536, "is_error": false}, "text": "", "timeline": [{"ev": "message_start", "t": 1062.4, "block": null, "name": null, "stop": null}, {"ev": "content_block_start", "t": 1063.1, "block": "tool_use", "name": "Read", "stop": null}, {"ev": "burst", "delta": "input_json_delta", "n": 15, "chars": 87, "start": 1063.5, "end": 1705.8}, {"ev": "content_block_stop", "t": 1706.5, "block": "tool_use", "name": "Read", "stop": null}, {"ev": "message_delta", "t": 1708.7, "block": null, "name": null, "stop": "tool_use"}, {"ev": "message_stop", "t": 1709.1, "block": null, "name": null, "stop": null}], "ttfb": 1062.4, "events": 35}, {"n": 4, "t_total": 1880.1, "n_messages": 7, "history": [{"role": "user", "blocks": [{"type": "text", "chars": 7308}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 489}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 123}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Read"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 536}]}], "usage": {"input": 2, "cache_read": 5110, "cache_write": 295, "output": 130}, "stop": "tool_use", "blocks": ["tool_use"], "signature": false, "thinking": "", "tool": {"name": "Edit", "input": {"file_path": "django/db/models/fields/reverse_related.py", "old_string": "            self.through_fields,", "new_string": "            make_hashable(self.through_fields),"}, "id": "toolu_01GiCYok732s2AfhkjAJYWoj", "result": "Edited /testbed/django/db/models/fields/reverse_related.py: replaced 1 occurrence(s)", "result_chars": 84, "is_error": false}, "text": "", "timeline": [{"ev": "message_start", "t": 934.1, "block": null, "name": null, "stop": null}, {"ev": "content_block_start", "t": 935.2, "block": "tool_use", "name": "Edit", "stop": null}, {"ev": "burst", "delta": "input_json_delta", "n": 28, "chars": 174, "start": 935.6, "end": 1876.7}, {"ev": "content_block_stop", "t": 1877.1, "block": "tool_use", "name": "Edit", "stop": null}, {"ev": "message_delta", "t": 1878.9, "block": null, "name": null, "stop": "tool_use"}, {"ev": "message_stop", "t": 1879.3, "block": null, "name": null, "stop": null}], "ttfb": 934.1, "events": 61}, {"n": 5, "t_total": 1692.7, "n_messages": 9, "history": [{"role": "user", "blocks": [{"type": "text", "chars": 7308}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 489}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 123}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Read"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 536}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 84}]}], "usage": {"input": 2, "cache_read": 5405, "cache_write": 173, "output": 94}, "stop": "tool_use", "blocks": ["tool_use"], "signature": false, "thinking": "", "tool": {"name": "Bash", "input": {"command": "cd /testbed && python tests/runtests.py m2m_through model_fields invalid_models_tests.test_models 2>&1 | tail -5"}, "id": "toolu_01Ms4KHfZwH3mPqF6WG9as8Z", "result": "  File \"/testbed/tests/runtests.py\", line 18, in <module>\n    raise RuntimeError(\n        'Django module not found, reference tests/README.rst for instructions.'\n    ) from e\nRuntimeError: Django module not found, reference tests/README.rst for instructions.", "result_chars": 258, "is_error": false}, "text": "", "timeline": [{"ev": "message_start", "t": 865.2, "block": null, "name": null, "stop": null}, {"ev": "content_block_start", "t": 866.1, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "burst", "delta": "input_json_delta", "n": 19, "chars": 127, "start": 866.6, "end": 1688.4}, {"ev": "content_block_stop", "t": 1688.8, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "message_delta", "t": 1691.4, "block": null, "name": null, "stop": "tool_use"}, {"ev": "message_stop", "t": 1691.9, "block": null, "name": null, "stop": null}], "ttfb": 865.2, "events": 43}, {"n": 6, "t_total": 1258.0, "n_messages": 11, "history": [{"role": "user", "blocks": [{"type": "text", "chars": 7308}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 489}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 123}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Read"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 536}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 84}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}], "usage": {"input": 2, "cache_read": 5578, "cache_write": 193, "output": 72}, "stop": "tool_use", "blocks": ["tool_use"], "signature": false, "thinking": "", "tool": {"name": "Bash", "input": {"command": "cd /testbed && python -c \"import django; print(django.__file__)\"; ls"}, "id": "toolu_01Bm7Vi5mbDv1yZQZdfnHU1P", "result": "/testbed/django/__init__.py\nAUTHORS\nCONTRIBUTING.rst\nDjango.egg-info\nGruntfile.js\nINSTALL\nLICENSE\nLICENSE.python\nMANIFEST.in\nREADME.rst\ndjango\ndocs\nextras\njs_tests\npackage.json\npyproject.toml\nscripts\nsetup.cfg\nsetup.py\ntests\ntox.ini", "result_chars": 232, "is_error": false}, "text": "", "timeline": [{"ev": "message_start", "t": 796.9, "block": null, "name": null, "stop": null}, {"ev": "content_block_start", "t": 797.2, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "burst", "delta": "input_json_delta", "n": 13, "chars": 85, "start": 797.4, "end": 1253.9}, {"ev": "content_block_stop", "t": 1254.3, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "message_delta", "t": 1256.7, "block": null, "name": null, "stop": "tool_use"}, {"ev": "message_stop", "t": 1257.0, "block": null, "name": null, "stop": null}], "ttfb": 796.9, "events": 31}, {"n": 7, "t_total": 2243.5, "n_messages": 13, "history": [{"role": "user", "blocks": [{"type": "text", "chars": 7308}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 489}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 123}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Read"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 536}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 84}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 232}]}], "usage": {"input": 2, "cache_read": 5771, "cache_write": 210, "output": 107}, "stop": "tool_use", "blocks": ["thinking", "tool_use"], "signature": true, "thinking": "That's odd, let me look closer at the full error message to understand what's happening.\n\n", "tool": {"name": "Bash", "input": {"command": "cd /testbed/tests && python runtests.py m2m_through invalid_models_tests.test_models 2>&1 | tail -5"}, "id": "toolu_01GuqE7wxr4UMTbAQxj6ci5C", "result": "  File \"/testbed/tests/runtests.py\", line 18, in <module>\n    raise RuntimeError(\n        'Django module not found, reference tests/README.rst for instructions.'\n    ) from e\nRuntimeError: Django module not found, reference tests/README.rst for instructions.", "result_chars": 258, "is_error": false}, "text": "", "timeline": [{"ev": "message_start", "t": 834.5, "block": null, "name": null, "stop": null}, {"ev": "content_block_start", "t": 837.3, "block": "thinking", "name": null, "stop": null}, {"ev": "burst", "delta": "thinking_delta", "n": 8, "chars": 90, "start": 2226.1, "end": 2232.3}, {"ev": "burst", "delta": "signature_delta", "n": 1, "chars": 0, "start": 2234.4, "end": 2234.4}, {"ev": "content_block_stop", "t": 2235.4, "block": "thinking", "name": null, "stop": null}, {"ev": "content_block_start", "t": 2235.9, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "burst", "delta": "input_json_delta", "n": 18, "chars": 114, "start": 2236.2, "end": 2241.4}, {"ev": "content_block_stop", "t": 2241.6, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "message_delta", "t": 2242.7, "block": null, "name": null, "stop": "tool_use"}, {"ev": "message_stop", "t": 2242.9, "block": null, "name": null, "stop": null}], "ttfb": 834.5, "events": 61}, {"n": 8, "t_total": 1570.2, "n_messages": 15, "history": [{"role": "user", "blocks": [{"type": "text", "chars": 7308}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 489}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 123}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Read"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 536}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 84}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 232}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 90}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}], "usage": {"input": 2, "cache_read": 5981, "cache_write": 206, "output": 80}, "stop": "tool_use", "blocks": ["tool_use"], "signature": false, "thinking": "", "tool": {"name": "Bash", "input": {"command": "cd /testbed/tests && python -c \"\nimport django.test.utils\" 2>&1 | tail -20"}, "id": "toolu_01AnwDbk5XDzthTKRZ3wTYX3", "result": "Traceback (most recent call last):\n  File \"<string>\", line 2, in <module>\n    import django.test.utils\nModuleNotFoundError: No module named 'django'", "result_chars": 148, "is_error": false}, "text": "", "timeline": [{"ev": "message_start", "t": 962.4, "block": null, "name": null, "stop": null}, {"ev": "content_block_start", "t": 963.3, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "burst", "delta": "input_json_delta", "n": 14, "chars": 92, "start": 963.8, "end": 1563.2}, {"ev": "content_block_stop", "t": 1563.6, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "message_delta", "t": 1567.9, "block": null, "name": null, "stop": "tool_use"}, {"ev": "message_stop", "t": 1568.7, "block": null, "name": null, "stop": null}], "ttfb": 962.4, "events": 33}, {"n": 9, "t_total": 3452.0, "n_messages": 17, "history": [{"role": "user", "blocks": [{"type": "text", "chars": 7308}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 489}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 123}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Read"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 536}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 84}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 232}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 90}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 148}]}], "usage": {"input": 2, "cache_read": 6187, "cache_write": 140, "output": 182}, "stop": "tool_use", "blocks": ["thinking", "tool_use"], "signature": true, "thinking": "It's odd that django isn't found when running from /testbed/tests but worked from /testbed itself, even though the first error also occurred there. runtests.py must be inserting paths somehow, so maybe there's a sitecustomize file affecting this\u2014I should check by importing django directly from /testbed.\n\n", "tool": {"name": "Bash", "input": {"command": "cd /testbed && python -c \"import django.test.utils; print('ok')\" 2>&1|tail -3; python -V; which python"}, "id": "toolu_01VFi9dzWXhn1whfakuQJou8", "result": "  File \"/testbed/django/test/client.py\", line 12, in <module>\n    from asgiref.sync import sync_to_async\nModuleNotFoundError: No module named 'asgiref'\nPython 3.13.15\n/opt/tinyorbit/.venv/bin/python", "result_chars": 198, "is_error": false}, "text": "", "timeline": [{"ev": "message_start", "t": 837.2, "block": null, "name": null, "stop": null}, {"ev": "content_block_start", "t": 838.2, "block": "thinking", "name": null, "stop": null}, {"ev": "burst", "delta": "thinking_delta", "n": 26, "chars": 306, "start": 3429.0, "end": 3445.9}, {"ev": "burst", "delta": "signature_delta", "n": 1, "chars": 0, "start": 3446.2, "end": 3446.2}, {"ev": "content_block_stop", "t": 3446.4, "block": "thinking", "name": null, "stop": null}, {"ev": "content_block_start", "t": 3446.7, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "burst", "delta": "input_json_delta", "n": 18, "chars": 119, "start": 3446.9, "end": 3450.4}, {"ev": "content_block_stop", "t": 3450.5, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "message_delta", "t": 3451.4, "block": null, "name": null, "stop": "tool_use"}, {"ev": "message_stop", "t": 3451.5, "block": null, "name": null, "stop": null}], "ttfb": 837.2, "events": 97}, {"n": 10, "t_total": 1656.7, "n_messages": 19, "history": [{"role": "user", "blocks": [{"type": "text", "chars": 7308}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 489}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 123}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Read"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 536}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 84}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 232}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 90}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 148}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 306}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 198}]}], "usage": {"input": 2, "cache_read": 6327, "cache_write": 279, "output": 100}, "stop": "tool_use", "blocks": ["tool_use"], "signature": false, "thinking": "", "tool": {"name": "Bash", "input": {"command": "ls /usr/bin/python3* /usr/local/bin/python* 2>/dev/null; ls /opt/miniconda3/envs 2>/dev/null"}, "id": "toolu_012dEcpBhX7kCU9vLcLSLguD", "result": "/usr/bin/python3\n/usr/bin/python3-config\n/usr/bin/python3.10\n/usr/bin/python3.10-config\ntestbed", "result_chars": 95, "is_error": false}, "text": "", "timeline": [{"ev": "message_start", "t": 1081.3, "block": null, "name": null, "stop": null}, {"ev": "content_block_start", "t": 1082.4, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "burst", "delta": "input_json_delta", "n": 17, "chars": 107, "start": 1083.0, "end": 1651.8}, {"ev": "content_block_stop", "t": 1652.2, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "message_delta", "t": 1655.0, "block": null, "name": null, "stop": "tool_use"}, {"ev": "message_stop", "t": 1655.4, "block": null, "name": null, "stop": null}], "ttfb": 1081.3, "events": 39}, {"n": 11, "t_total": 1822.6, "n_messages": 21, "history": [{"role": "user", "blocks": [{"type": "text", "chars": 7308}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 489}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 123}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Read"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 536}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 84}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 232}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 90}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 148}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 306}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 198}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 95}]}], "usage": {"input": 2, "cache_read": 6606, "cache_write": 156, "output": 114}, "stop": "tool_use", "blocks": ["tool_use"], "signature": false, "thinking": "", "tool": {"name": "Bash", "input": {"command": "cd /testbed/tests && /opt/miniconda3/envs/testbed/bin/python runtests.py m2m_through invalid_models_tests.test_models model_meta 2>&1 | tail -5"}, "id": "toolu_01Md9uyKXutF9LjyPWMqnTA6", "result": "Destroying test database for alias 'other'...\nDestroying test database for alias 'other'...\nDestroying test database for alias 'other'...\nDestroying test database for alias 'other'...\nDestroying test database for alias 'other'...", "result_chars": 229, "is_error": false}, "text": "", "timeline": [{"ev": "message_start", "t": 1083.9, "block": null, "name": null, "stop": null}, {"ev": "content_block_start", "t": 1085.0, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "burst", "delta": "input_json_delta", "n": 24, "chars": 158, "start": 1085.7, "end": 1819.5}, {"ev": "content_block_stop", "t": 1819.8, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "message_delta", "t": 1821.6, "block": null, "name": null, "stop": "tool_use"}, {"ev": "message_stop", "t": 1821.8, "block": null, "name": null, "stop": null}], "ttfb": 1083.9, "events": 53}, {"n": 12, "t_total": 1675.6, "n_messages": 23, "history": [{"role": "user", "blocks": [{"type": "text", "chars": 7308}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 489}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 123}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Read"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 536}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 84}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 232}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 90}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 148}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 306}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 198}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 95}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 229}]}], "usage": {"input": 2, "cache_read": 6762, "cache_write": 193, "output": 130}, "stop": "tool_use", "blocks": ["tool_use"], "signature": false, "thinking": "", "tool": {"name": "Bash", "input": {"command": "cd /testbed/tests && /opt/miniconda3/envs/testbed/bin/python runtests.py m2m_through invalid_models_tests.test_models model_meta 2>&1 | grep -E \"^(OK|FAILED|Ran)\""}, "id": "toolu_01J8x5wxLnSX2174zYzgDD2J", "result": "Ran 202 tests in 0.124s\nOK (skipped=10)", "result_chars": 39, "is_error": false}, "text": "", "timeline": [{"ev": "message_start", "t": 797.5, "block": null, "name": null, "stop": null}, {"ev": "content_block_start", "t": 798.5, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "burst", "delta": "input_json_delta", "n": 27, "chars": 179, "start": 799.0, "end": 1673.5}, {"ev": "content_block_stop", "t": 1673.7, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "message_delta", "t": 1674.7, "block": null, "name": null, "stop": "tool_use"}, {"ev": "message_stop", "t": 1674.9, "block": null, "name": null, "stop": null}], "ttfb": 797.5, "events": 59}, {"n": 13, "t_total": 3245.0, "n_messages": 25, "history": [{"role": "user", "blocks": [{"type": "text", "chars": 7308}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 489}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 123}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Read"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 536}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 84}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 232}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 90}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 148}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 306}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 198}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 95}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 229}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 39}]}], "usage": {"input": 2, "cache_read": 6955, "cache_write": 159, "output": 194}, "stop": "tool_use", "blocks": ["thinking", "tool_use"], "signature": true, "thinking": "I should add a test for this, so let me search existing test files for identity/hash coverage of ManyToManyRel to find where to place it.\n\n", "tool": {"name": "Bash", "input": {"command": "cd /testbed/tests && grep -rn \"ForeignObjectRel\\|ManyToManyRel\" --include=*.py . | grep -i \"test\" | head -20"}, "id": "toolu_01SyKvHf6d3JgPWtYn5jHaHx", "result": "./serializers/test_xml.py:27:    <field name=\"categories\" rel=\"ManyToManyRel\" to=\"serializers.category\"><object pk=\"%(first_category_pk)s\"></object><object pk=\"%(second_category_pk)s\"></object></field>\n./serializers/test_xml.py:28:    <field name=\"meta_data\" rel=\"ManyToManyRel\" to=\"serializers.categorymetadata\"></field>\n./serializers/test_xml.py:98:        <field to=\"serializers.category\" name=\"categories\" rel=\"ManyToManyRel\">\n./serializers/test_xml.py:101:        <field to=\"serializers.categorymetadata\" name=\"meta_data\" rel=\"ManyToManyRel\"></field>\n./model_fields/test_field_flags.py:41:    models.ForeignObjectRel,\n./model_meta/tests.py:7:    CharField, Field, ForeignObjectRel, ManyToManyField,\n./model_meta/tests.py:185:        self.assertIsInstance(field_info[0], ForeignObjectRel)\n./model_meta/tests.py:190:        self.assertIsInstance(field_info[0], ForeignObjectRel)\n./fixtures/tests.py:354:            '<field to=\"auth.permission\" name=\"permissions\" rel=\"ManyToManyRel\"><object><natural>add_user'\n./fixtures/tests.py:359:            ' Grappelli</natural></field><field to=\"auth.permission\" name=\"permissions\" rel=\"ManyToManyRel\">'\n./fixtures/tests.py:364:            'to=\"auth.permission\" name=\"permissions\" rel=\"ManyToManyRel\"><object><natural>change_user</natural>'\n./fixtures/tests.py:367:            'to=\"fixtures.person\" name=\"authors\" rel=\"ManyToManyRel\"><object><natural>Artist formerly known as '\n./invalid_models_tests/test_relative_fields.py:959:        class ManyToManyRel(models.Model):\n./invalid_models_tests/test_relative_fields.py:967:        self.assertEqual(ManyToManyRel.check(), [])", "result_chars": 1617, "is_error": false}, "text": "", "timeline": [{"ev": "message_start", "t": 953.6, "block": null, "name": null, "stop": null}, {"ev": "content_block_start", "t": 954.6, "block": "thinking", "name": null, "stop": null}, {"ev": "burst", "delta": "thinking_delta", "n": 15, "chars": 139, "start": 3226.8, "end": 3234.6}, {"ev": "burst", "delta": "signature_delta", "n": 1, "chars": 0, "start": 3235.1, "end": 3235.1}, {"ev": "content_block_stop", "t": 3235.5, "block": "thinking", "name": null, "stop": null}, {"ev": "content_block_start", "t": 3236.3, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "burst", "delta": "input_json_delta", "n": 20, "chars": 128, "start": 3237.0, "end": 3242.7}, {"ev": "content_block_stop", "t": 3242.9, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "message_delta", "t": 3244.2, "block": null, "name": null, "stop": "tool_use"}, {"ev": "message_stop", "t": 3244.4, "block": null, "name": null, "stop": null}], "ttfb": 953.6, "events": 79}, {"n": 14, "t_total": 1635.1, "n_messages": 27, "history": [{"role": "user", "blocks": [{"type": "text", "chars": 7308}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 489}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 123}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Read"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 536}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 84}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 232}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 90}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 148}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 306}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 198}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 95}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 229}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 39}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 139}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 1617}]}], "usage": {"input": 2, "cache_read": 7114, "cache_write": 890, "output": 84}, "stop": "tool_use", "blocks": ["tool_use"], "signature": false, "thinking": "", "tool": {"name": "Bash", "input": {"command": "cd /testbed/tests && ls m2m_through/ && sed -n 1,60p m2m_through/models.py"}, "id": "toolu_015TCRKmqZJWML8rWwC3r7Uh", "result": "__init__.py\n__pycache__\nmodels.py\ntests.py\nfrom datetime import datetime\n\nfrom django.db import models\n\n\n# M2M described on one of the models\nclass Person(models.Model):\n    name = models.CharField(max_length=128)\n\n    class Meta:\n        ordering = ('name',)\n\n\nclass Group(models.Model):\n    name = models.CharField(max_length=128)\n    members = models.ManyToManyField(Person, through='Membership')\n    custom_members = models.ManyToManyField(Person, through='CustomMembership', related_name=\"custom\")\n    nodefaultsnonulls = models.ManyToManyField(\n        Person,\n        through='TestNoDefaultsOrNulls',\n        related_name=\"testnodefaultsnonulls\",\n    )\n\n    class Meta:\n        ordering = ('name',)\n\n\nclass Membership(models.Model):\n    person = models.ForeignKey(Person, models.CASCADE)\n    group = models.ForeignKey(Group, models.CASCADE)\n    date_joined = models.DateTimeField(default=datetime.now)\n    invite_reason = models.CharField(max_length=64, null=True)\n\n    class Meta:\n        ordering = ('date_joined', 'invite_reason', 'group')\n\n    def __str__(self):\n        return \"%s is a member of %s\" % (self.person.name, self.group.name)\n\n\nclass CustomMembership(models.Model):\n    person = models.ForeignKey(\n        Person,\n        models.CASCADE,\n        db_column=\"custom_person_column\",\n        related_name=\"custom_person_related_name\",\n    )\n    group = models.ForeignKey(Group, models.CASCADE)\n    weird_fk = models.ForeignKey(Membership, models.SET_NULL, null=True)\n    date_joined = models.DateTimeField(default=datetime.now)\n\n    class Meta:\n        db_table = \"test_table\"\n        ordering = [\"date_joined\"]\n\n    def __str__(self):\n        return \"%s is a member of %s\" % (self.person.name, self.group.name)\n\n\nclass TestNoDefaultsOrNulls(models.Model):", "result_chars": 1776, "is_error": false}, "text": "", "timeline": [{"ev": "message_start", "t": 956.9, "block": null, "name": null, "stop": null}, {"ev": "content_block_start", "t": 957.7, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "burst", "delta": "input_json_delta", "n": 14, "chars": 89, "start": 958.1, "end": 1631.0}, {"ev": "content_block_stop", "t": 1631.4, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "message_delta", "t": 1633.6, "block": null, "name": null, "stop": "tool_use"}, {"ev": "message_stop", "t": 1633.9, "block": null, "name": null, "stop": null}], "ttfb": 956.9, "events": 33}, {"n": 15, "t_total": 7496.7, "n_messages": 29, "history": [{"role": "user", "blocks": [{"type": "text", "chars": 7308}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 489}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 123}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Read"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 536}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 84}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 232}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 90}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 148}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 306}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 198}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 95}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 229}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 39}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 139}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 1617}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 1776}]}], "usage": {"input": 2, "cache_read": 8004, "cache_write": 771, "output": 479}, "stop": "tool_use", "blocks": ["thinking", "tool_use"], "signature": true, "thinking": "I'm trying to recall where the upstream fix placed its test\u2014likely in tests/invalid_models_tests/test_models.py rather than m2m_through, checking for the make_hashable fix on through_fields.\n\n", "tool": {"name": "Read", "input": {"file_path": "/testbed/tests/model_fields/test_manytomanyfield.py"}, "id": "toolu_01HnnSSAbZ9kDNABidvc7qvC", "result": "     1\tfrom django.apps import apps\n     2\tfrom django.db import models\n     3\tfrom django.test import SimpleTestCase, TestCase\n     4\tfrom django.test.utils import isolate_apps\n     5\t\n     6\tfrom .models import ManyToMany\n     7\t\n     8\t\n     9\tclass ManyToManyFieldTests(SimpleTestCase):\n    10\t\n    11\t    def test_abstract_model_pending_operations(self):\n    12\t        \"\"\"\n    13\t        Many-to-many fields declared on abstract models should not add lazy\n    14\t        relations to resolve relationship declared as string (#24215).\n    15\t        \"\"\"\n    16\t        pending_ops_before = list(apps._pending_operations.items())\n    17\t\n    18\t        class AbstractManyToManyModel(models.Model):\n    19\t            fk = models.ForeignKey('missing.FK', models.CASCADE)\n    20\t\n    21\t            class Meta:\n    22\t                abstract = True\n    23\t\n    24\t        self.assertIs(AbstractManyToManyModel._meta.apps, apps)\n    25\t        self.assertEqual(\n    26\t            pending_ops_before,\n    27\t            list(apps._pending_operations.items()),\n    28\t            'Pending lookup added for a many-to-many field on an abstract model'\n    29\t        )\n    30\t\n    31\t    @isolate_apps('model_fields', 'model_fields.tests')\n    32\t    def test_abstract_model_app_relative_foreign_key(self):\n    33\t        class AbstractReferent(models.Model):\n    34\t            reference = models.ManyToManyField('Referred', through='Through')\n    35\t\n    36\t            class Meta:\n    37\t                app_label = 'model_fields'\n    38\t                abstract = True\n    39\t\n    40\t        def assert_app_model_resolved(label):\n    41\t            class Referred(models.Model):\n    42\t                class Meta:\n    43\t                    app_label = label\n    44\t\n    45\t            class Through(models.Model):\n    46\t                referred = models.ForeignKey('Referred', on_delete=models.CASCADE)\n    47\t                referent = models.ForeignKey('ConcreteReferent', on_delete=models.CASCADE)\n    48\t\n    49\t                class Meta:\n    50\t                    app_label = label\n    51\t\n    52\t            class ConcreteReferent(AbstractReferent):\n    53\t                class Meta:\n    54\t                    app_label = label\n    55\t\n    56\t            self.assertEqual(ConcreteReferent._meta.get_field('reference').related_model, Referred)\n    57\t            self.assertEqual(ConcreteReferent.reference.through, Through)\n    58\t\n    59\t        assert_app_model_resolved('model_fields')\n    60\t        assert_app_model_resolved('tests')\n    61\t\n    62\t    def test_invalid_to_paramete", "result_chars": 4377, "is_error": false}, "text": "", "timeline": [{"ev": "message_start", "t": 916.7, "block": null, "name": null, "stop": null}, {"ev": "content_block_start", "t": 917.6, "block": "thinking", "name": null, "stop": null}, {"ev": "burst", "delta": "thinking_delta", "n": 17, "chars": 192, "start": 3648.0, "end": 4057.5}, {"ev": "burst", "delta": "signature_delta", "n": 1, "chars": 0, "start": 7458.9, "end": 7458.9}, {"ev": "content_block_stop", "t": 7460.0, "block": "thinking", "name": null, "stop": null}, {"ev": "content_block_start", "t": 7460.9, "block": "tool_use", "name": "Read", "stop": null}, {"ev": "burst", "delta": "input_json_delta", "n": 11, "chars": 68, "start": 7461.6, "end": 7491.7}, {"ev": "content_block_stop", "t": 7492.2, "block": "tool_use", "name": "Read", "stop": null}, {"ev": "message_delta", "t": 7495.1, "block": null, "name": null, "stop": "tool_use"}, {"ev": "message_stop", "t": 7495.5, "block": null, "name": null, "stop": null}], "ttfb": 916.7, "events": 65}, {"n": 16, "t_total": 7091.4, "n_messages": 31, "history": [{"role": "user", "blocks": [{"type": "text", "chars": 7308}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 489}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 123}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Read"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 536}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 84}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 232}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 90}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 148}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 306}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 198}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 95}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 229}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 39}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 139}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 1617}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 1776}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 192}, {"type": "tool_use", "name": "Read"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 4377}]}], "usage": {"input": 2, "cache_read": 8775, "cache_write": 2094, "output": 594}, "stop": "tool_use", "blocks": ["thinking", "tool_use"], "signature": true, "thinking": "I need to figure out where to add a test verifying that the ManyToMany rel is hashable when through_fields is a list \u2014 checking m2m_through tests and model_fields tests, but the upstream test location isn't present in the current repo, so I'll just add my own test.\n\n", "tool": {"name": "Edit", "input": {"file_path": "/testbed/tests/model_fields/test_manytomanyfield.py", "old_string": "\nclass ManyToManyFieldDBTests(TestCase):", "new_string": "    @isolate_apps('model_fields')\n    def test_through_fields_list_is_hashable(self):\n        class Parent(models.Model):\n            pass\n\n        class Child(models.Model):\n            parent = models.ForeignKey(Parent, on_delete=models.CASCADE)\n            m2m = models.ManyToManyField(\n                Parent,\n                through='Through',\n                through_fields=['child', 'parent'],\n                related_name='children',\n            )\n\n        class Through(models.Model):\n            parent = models.ForeignKey(Parent, on_delete=models.CASCADE, related_name='+')\n            child = models.ForeignKey(Child, on_delete=models.CASCADE, related_name='+')\n\n        field = Child._meta.get_field('m2m')\n        self.assertEqual(hash(field.remote_field), hash(field.remote_field))\n\n\nclass ManyToManyFieldDBTests(TestCase):"}, "id": "toolu_01FtASK4r3woJ5W9c8QHjt1d", "result": "Edited /testbed/tests/model_fields/test_manytomanyfield.py: replaced 1 occurrence(s)", "result_chars": 84, "is_error": false}, "text": "", "timeline": [{"ev": "message_start", "t": 813.5, "block": null, "name": null, "stop": null}, {"ev": "content_block_start", "t": 814.3, "block": "thinking", "name": null, "stop": null}, {"ev": "burst", "delta": "thinking_delta", "n": 20, "chars": 267, "start": 4703.7, "end": 4716.6}, {"ev": "burst", "delta": "signature_delta", "n": 1, "chars": 0, "start": 4716.9, "end": 4716.9}, {"ev": "content_block_stop", "t": 4717.2, "block": "thinking", "name": null, "stop": null}, {"ev": "content_block_start", "t": 4717.6, "block": "tool_use", "name": "Edit", "stop": null}, {"ev": "burst", "delta": "input_json_delta", "n": 146, "chars": 1005, "start": 4717.9, "end": 7089.7}, {"ev": "content_block_stop", "t": 7089.9, "block": "tool_use", "name": "Edit", "stop": null}, {"ev": "message_delta", "t": 7090.5, "block": null, "name": null, "stop": "tool_use"}, {"ev": "message_stop", "t": 7090.9, "block": null, "name": null, "stop": null}], "ttfb": 813.5, "events": 341}, {"n": 17, "t_total": 2725.4, "n_messages": 33, "history": [{"role": "user", "blocks": [{"type": "text", "chars": 7308}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 489}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 123}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Read"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 536}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 84}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 232}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 90}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 148}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 306}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 198}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 95}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 229}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 39}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 139}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 1617}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 1776}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 192}, {"type": "tool_use", "name": "Read"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 4377}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 267}, {"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 84}]}], "usage": {"input": 2, "cache_read": 10869, "cache_write": 640, "output": 218}, "stop": "tool_use", "blocks": ["tool_use"], "signature": false, "thinking": "", "tool": {"name": "Bash", "input": {"command": "cd /testbed/tests && /opt/miniconda3/envs/testbed/bin/python runtests.py model_fields.test_manytomanyfield 2>&1 | tail -3; cd /testbed && git stash -- django && cd tests && /opt/miniconda3/envs/testbed/bin/python runtests.py model_fields.test_manytomanyfield.ManyToManyFieldTests.test_through_fields_list_is_hashable 2>&1 | tail -5; cd /testbed && git stash pop"}, "id": "toolu_01AgbXyTgttdc3nZxyvYSBSg", "result": "Destroying test database for alias 'default'...\nDestroying test database for alias 'default'...\nDestroying test database for alias 'default'...\nSaved working directory and index state WIP on main: 1b4e95bcbb SWE-bench\n\nFAILED (errors=1)\nTesting against Django installed in '/testbed/django' with up to 8 processes\nFound 1 test(s).\nSystem check identified no issues (0 silenced).\nOn branch main\nChanges not staged for commit:\n  (use \"git add <file>...\" to update what will be committed)\n  (use \"git restore <file>...\" to discard changes in working directory)\n\tmodified:   django/db/models/fields/reverse_related.py\n\tmodified:   tests/model_fields/test_manytomanyfield.py\n\nno changes added to commit (use \"git add\" and/or \"git commit -a\")\nDropped refs/stash@{0} (d29f173288a1cd6f06891990daa133e560a3377c)", "result_chars": 802, "is_error": false}, "text": "", "timeline": [{"ev": "message_start", "t": 1018.2, "block": null, "name": null, "stop": null}, {"ev": "content_block_start", "t": 1019.2, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "burst", "delta": "input_json_delta", "n": 55, "chars": 376, "start": 1019.7, "end": 2723.5}, {"ev": "content_block_stop", "t": 2723.7, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "message_delta", "t": 2724.6, "block": null, "name": null, "stop": "tool_use"}, {"ev": "message_stop", "t": 2724.9, "block": null, "name": null, "stop": null}], "ttfb": 1018.2, "events": 115}, {"n": 18, "t_total": 1834.8, "n_messages": 35, "history": [{"role": "user", "blocks": [{"type": "text", "chars": 7308}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 489}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 123}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Read"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 536}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 84}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 232}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 90}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 148}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 306}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 198}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 95}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 229}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 39}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 139}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 1617}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 1776}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 192}, {"type": "tool_use", "name": "Read"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 4377}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 267}, {"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 84}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 802}]}], "usage": {"input": 2, "cache_read": 11509, "cache_write": 530, "output": 134}, "stop": "tool_use", "blocks": ["tool_use"], "signature": false, "thinking": "", "tool": {"name": "Bash", "input": {"command": "cd /testbed/tests && /opt/miniconda3/envs/testbed/bin/python runtests.py model_fields m2m_through m2m_through_regress invalid_models_tests 2>&1 | grep -E \"^(OK|FAILED|Ran)\""}, "id": "toolu_01FdzvB9khAA5iosZp32b6TZ", "result": "Ran 777 tests in 0.326s\nOK (skipped=23)", "result_chars": 39, "is_error": false}, "text": "", "timeline": [{"ev": "message_start", "t": 860.9, "block": null, "name": null, "stop": null}, {"ev": "content_block_start", "t": 862.3, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "burst", "delta": "input_json_delta", "n": 28, "chars": 189, "start": 862.9, "end": 1831.7}, {"ev": "content_block_stop", "t": 1832.0, "block": "tool_use", "name": "Bash", "stop": null}, {"ev": "message_delta", "t": 1833.8, "block": null, "name": null, "stop": "tool_use"}, {"ev": "message_stop", "t": 1834.0, "block": null, "name": null, "stop": null}], "ttfb": 860.9, "events": 61}, {"n": 19, "t_total": 2868.9, "n_messages": 37, "history": [{"role": "user", "blocks": [{"type": "text", "chars": 7308}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 489}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 123}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Read"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 536}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 84}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 232}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 90}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 258}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 148}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 306}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 198}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 95}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 229}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 39}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 139}, {"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 1617}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 1776}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 192}, {"type": "tool_use", "name": "Read"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 4377}]}, {"role": "assistant", "blocks": [{"type": "thinking", "chars": 267}, {"type": "tool_use", "name": "Edit"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 84}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 802}]}, {"role": "assistant", "blocks": [{"type": "tool_use", "name": "Bash"}]}, {"role": "user", "blocks": [{"type": "tool_result", "chars": 39}]}], "usage": {"input": 2, "cache_read": 12039, "cache_write": 163, "output": 219}, "stop": "end_turn", "blocks": ["text"], "signature": false, "thinking": "", "tool": null, "text": "Done.\n\n- `django/db/models/fields/reverse_related.py`: wrapped `self.through_fields` in `make_hashable()` inside `ManyToManyRel.identity`, so a list passed as `through_fields` no longer makes the rel unhashable (the `TypeError: unhashable type: 'list'` during model checks).\n- `tests/model_fields/test_manytomanyfield.py`: added `test_through_fields_list_is_hashable`, which fails without the fix and passes with it.\n\nRan `model_fields`, `m2m_through`, `m2m_through_regress`, and `invalid_models_tests` \u2014 all pass. Nothing committed.", "timeline": [{"ev": "message_start", "t": 1011.8, "block": null, "name": null, "stop": null}, {"ev": "content_block_start", "t": 1019.3, "block": "text", "name": null, "stop": null}, {"ev": "burst", "delta": "text_delta", "n": 32, "chars": 533, "start": 1020.9, "end": 2857.1}, {"ev": "content_block_stop", "t": 2864.5, "block": "text", "name": null, "stop": null}, {"ev": "message_delta", "t": 2867.0, "block": null, "name": null, "stop": "end_turn"}, {"ev": "message_stop", "t": 2867.5, "block": null, "name": null, "stop": null}], "ttfb": 1011.8, "events": 69}], "totals": {"calls": 19, "usd": 0.2219, "minutes": 1.0, "diff_chars": 1740, "trace_events": 1373, "trace_records": 1411}, "final_text": "Done.\n\n- `django/db/models/fields/reverse_related.py`: wrapped `self.through_fields` in `make_hashable()` inside `ManyToManyRel.identity`, so a list passed as `through_fields` no longer makes the rel unhashable (the `TypeError: unhashable type: 'list'` during model checks).\n- `tests/model_fields/test_manytomanyfield.py`: added `test_through_fields_list_is_hashable`, which fails without the fix and passes with it.\n\nRan `model_fields`, `m2m_through`, `m2m_through_regress`, and `invalid_models_tests` \u2014 all pass. Nothing committed."};
+const NS = "http://www.w3.org/2000/svg";
+const $ = s => document.querySelector(s);
+const el = (t, a, p) => { const n = document.createElement(t); for (const k in a) k === "html" ? n.innerHTML = a[k] : k === "text" ? n.textContent = a[k] : n.setAttribute(k, a[k]); if (p) p.appendChild(n); return n; };
+const sv = (t, a, p) => { const n = document.createElementNS(NS, t); for (const k in a) n.setAttribute(k, a[k]); if (p) p.appendChild(n); return n; };
+const fmt = n => n.toLocaleString("en-US");
+const ms = v => v >= 1000 ? (v / 1000).toFixed(v >= 10000 ? 0 : 2) + " s" : Math.round(v) + " ms";
+const esc = s => String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+$("#f-ev").textContent = fmt(D.totals.trace_events);
+
+/* ---------- 01 the loop ---------- */
+const STAGES = [
+  ["Build the request", "Take the running history, add the system prompt and tool schemas, and mark the cache breakpoint. Nothing is trimmed unless the context pipeline says so."],
+  ["Open the stream", "One POST, one long-lived response. Events are consumed as they arrive; retryable failures are caught here and surface as visible status, not silence."],
+  ["Read the reply", "Thinking blocks, text, and tool calls arrive as separate content blocks. The final message carries the stop reason and the usage ledger."],
+  ["Run the tools", "Each call is checked against the permission policy, executed against the real filesystem, and formatted into a tool_result carrying the matching id."],
+  ["Rebuild the state", "Append the assistant message and the results, increment the turn, and reconstruct the whole loop state so the transition is explicit. Then repeat."],
+];
+STAGES.forEach(([t, d], i) => {
+  const s = el("div", { class: "stage", id: "st" + i }, $("#stages"));
+  el("div", { class: "sn", text: String(i + 1).padStart(2, "0") }, s);
+  const b = el("div", {}, s); el("b", { text: t }, b); el("p", { text: d }, b);
+});
+(function ring() {
+  const s = $("#ring"), cx = 170, cy = 150, r = 104;
+  const pts = STAGES.map((_, i) => { const a = -Math.PI / 2 + i * 2 * Math.PI / 5; return [cx + r * Math.cos(a), cy + r * Math.sin(a)]; });
+  for (let i = 0; i < 5; i++) {
+    const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % 5];
+    const mx = (x1 + x2) / 2 - (cx - (x1 + x2) / 2) * .12, my = (y1 + y2) / 2 - (cy - (y1 + y2) / 2) * .12;
+    sv("path", { d: `M${x1} ${y1} Q${mx} ${my} ${x2} ${y2}`, fill: "none", stroke: "var(--line)", "stroke-width": 2, id: "arc" + i }, s);
+  }
+  pts.forEach(([x, y], i) => {
+    const g = sv("g", { id: "rn" + i }, s);
+    sv("circle", { cx: x, cy: y, r: 27, fill: "var(--panel)", stroke: "var(--line-2)", "stroke-width": 2, class: "rc" }, g);
+    const t = sv("text", { x, y: y + 5, "text-anchor": "middle", class: "lb", "font-size": "14", "font-weight": "700", fill: "var(--ink-2)" }, g);
+    t.textContent = String(i + 1).padStart(2, "0");
+  });
+  const c = sv("text", { x: cx, y: cy - 4, "text-anchor": "middle", fill: "var(--ink-3)", class: "ax" }, s); c.textContent = "ONE TURN";
+  const c2 = sv("text", { x: cx, y: cy + 14, "text-anchor": "middle", fill: "var(--ink)", class: "lb", "font-weight": "700" }, s); c2.textContent = "× 19";
+  let k = 0;
+  const step = () => {
+    for (let i = 0; i < 5; i++) {
+      const on = i === k;
+      $("#rn" + i).querySelector(".rc").setAttribute("fill", on ? "var(--harness)" : "var(--panel)");
+      $("#rn" + i).querySelector(".rc").setAttribute("stroke", on ? "var(--harness)" : "var(--line-2)");
+      $("#rn" + i).querySelector("text").setAttribute("fill", on ? "#fff" : "var(--ink-2)");
+      $("#arc" + i).setAttribute("stroke", i === k ? "var(--harness)" : "var(--line)");
+      $("#st" + i).classList.toggle("on", on);
+    }
+    k = (k + 1) % 5;
+  };
+  step();
+  if (!reduced) setInterval(step, 2100);
+})();
+
+$("#skeleton").innerHTML = `<span class="c"># tinyorbit/query.py — the loop, with the recovery paths elided</span>
+<span class="kw">while</span> True:
+    messages = compact_if_over_threshold(state.messages)   <span class="c"># never fired here</span>
+    response = <span class="kw">await</span> stream_model(messages, tools, system)   <span class="c"># one HTTP stream</span>
+
+    <span class="kw">if</span> response.stop_reason == <span class="s">"refusal"</span>:    <span class="kw">return</span> Done(<span class="s">"refusal"</span>)
+    tool_calls = [b <span class="kw">for</span> b <span class="kw">in</span> response.content <span class="kw">if</span> b.type == <span class="s">"tool_use"</span>]
+    messages = [*messages, {<span class="s">"role"</span>: <span class="s">"assistant"</span>, <span class="s">"content"</span>: response.content}]
+    <span class="c">#                       ↑ verbatim: thinking blocks and signatures included</span>
+
+    <span class="kw">if not</span> tool_calls:
+        <span class="kw">return</span> Done(<span class="s">"completed"</span>, messages)        <span class="c"># turn 19 exits here</span>
+
+    results = []
+    <span class="kw">for</span> group <span class="kw">in</span> partition_for_concurrency(tool_calls):
+        results += <span class="kw">await</span> asyncio.gather(*(run_tool(c) <span class="kw">for</span> c <span class="kw">in</span> group))
+
+    messages = [*messages, {<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>: results}]
+    <span class="kw">if</span> turn + 1 &gt;= max_turns: <span class="kw">return</span> Done(<span class="s">"max_turns"</span>, messages)
+    state = LoopState(messages=messages, turn_count=turn + 1, ...)   <span class="c"># full rebuild</span>`;
+
+/* ---------- 02 connection ---------- */
+$("#conncode").innerHTML = `<span class="c"># tinyorbit/api.py — one client for the whole session</span>
+<span class="kw">def</span> make_client():
+    <span class="c">"""max_retries=0 because the loop owns retries; two retry layers would</span>
+<span class="c">    hide the status events the UI is supposed to show."""</span>
+    <span class="kw">return</span> anthropic.AsyncAnthropic(max_retries=<span class="s">0</span>)
+
+<span class="c"># every turn, the same connection pool is reused</span>
+<span class="kw">async with</span> client.beta.messages.stream(
+    model=<span class="s">"claude-opus-5"</span>, max_tokens=<span class="s">16_000</span>,
+    system=system, messages=messages, tools=tools,
+    <span class="hl">thinking={<span class="s">"type"</span>: <span class="s">"adaptive"</span>, <span class="s">"display"</span>: <span class="s">"summarized"</span>}</span>,
+    cache_control={<span class="s">"type"</span>: <span class="s">"ephemeral"</span>},
+    betas=[<span class="s">"server-side-fallback-2026-07-01"</span>], fallbacks=<span class="s">"default"</span>,
+) <span class="kw">as</span> stream:
+    <span class="kw">async for</span> event <span class="kw">in</span> stream:      <span class="c"># ← the wire, replayed below</span>
+        ...`;
+
+(function req1() {
+  const c = D.calls[0], sys = D.system;
+  const rows = [
+    ["model", D.model],
+    ["max_tokens", "16000"],
+    ["thinking", "adaptive · display=summarized"],
+    ["cache_control", "ephemeral (auto)"],
+    ["system[0]", sys[0].chars + " chars · <b style='color:var(--harness-ink)'>cached</b>"],
+    ["system[1]", sys[1].chars + " chars · dynamic"],
+    ["tools", D.settings.tools.join(", ")],
+    ["messages", "1 · the issue, " + fmt(c.history[0].blocks[0].chars) + " chars"],
+  ];
+  $("#req1").innerHTML = rows.map(([k, v]) => `<div style="display:flex;gap:10px"><span style="color:var(--ink-3);min-width:106px">${k}</span><span>${v}</span></div>`).join("");
+  $("#req1-badge").textContent = fmt(c.usage.cache_write) + " tok written to cache";
+})();
+
+(function ttfb() {
+  const s = $("#ttfb"), W = 460, H = 190, L = 30, B = 26, max = 1600;
+  const bw = (W - L - 8) / 19;
+  [0, 500, 1000, 1500].forEach(v => {
+    const y = H - B - v / max * (H - B - 12);
+    sv("line", { x1: L, x2: W - 4, y1: y, y2: y, class: "gl" }, s);
+    const t = sv("text", { x: L - 6, y: y + 3, "text-anchor": "end", class: "ax" }, s); t.textContent = v;
+  });
+  D.calls.forEach((c, i) => {
+    const h = c.ttfb / max * (H - B - 12), x = L + i * bw;
+    const r = sv("rect", { x: x + 1.5, y: H - B - h, width: bw - 3, height: h, rx: 3, fill: i === 0 ? "var(--model)" : "var(--harness)" }, s);
+    const ttl = sv("title", {}, r); ttl.textContent = `call ${c.n}: ${Math.round(c.ttfb)} ms to first byte`;
+    if (i === 0 || i === 18) { const t = sv("text", { x: x + bw / 2, y: H - B + 13, "text-anchor": "middle", class: "ax" }, s); t.textContent = c.n; }
+  });
+  const t1 = sv("text", { x: L + bw / 2, y: H - B - D.calls[0].ttfb / max * (H - B - 12) - 7, "text-anchor": "middle", class: "lb", fill: "var(--model-ink)" }, s);
+  t1.textContent = "cold";
+  const rest = D.calls.slice(1).reduce((a, c) => a + c.ttfb, 0) / 18;
+  const y = H - B - rest / max * (H - B - 12);
+  sv("line", { x1: L, x2: W - 4, y1: y, y2: y, stroke: "var(--ink-2)", "stroke-width": 1.5, "stroke-dasharray": "5 4" }, s);
+  const t2 = sv("text", { x: W - 6, y: y - 6, "text-anchor": "end", class: "lb" }, s); t2.textContent = "mean " + Math.round(rest) + " ms";
+  $("#c1").textContent = Math.round(D.calls[0].ttfb) + " ms";
+  $("#crest").textContent = Math.round(rest) + " ms";
+})();
+
+/* ---------- 03 wire replay ---------- */
+let cur = 9, playing = false, speed = 4, raf = null;
+
+D.calls.forEach(c => {
+  const b = el("button", { class: "chip" + (c.thinking ? " think" : ""), "aria-pressed": "false", "data-n": c.n }, $("#strip"));
+  b.innerHTML = `${c.n}<span class="th"></span>`;
+  b.title = `turn ${c.n} · ${c.tool ? c.tool.name : "final answer"} · ${ms(c.t_total)}${c.thinking ? " · thinking" : ""}`;
+  b.onclick = () => { stop(); cur = c.n; render(); };
+});
+
+function call() { return D.calls.find(c => c.n === cur); }
+
+const EVNAME = {
+  message_start: ["message_start", "server accepted; generation begins"],
+  content_block_start: ["content_block_start", "a block is announced"],
+  content_block_stop: ["content_block_stop", "block complete"],
+  message_delta: ["message_delta", "stop_reason + final usage"],
+  message_stop: ["message_stop", "response body ends"],
+};
+
+function render() {
+  const c = call();
+  document.querySelectorAll(".chip").forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.n === cur)));
+  const w = $("#wire"); w.innerHTML = '<div class="spine"></div>';
+
+  // harness-side opening row
+  addRow(w, "h", "t = 0", `<span class="arrow">→</span><b>POST /v1/messages</b><span class="meta">${c.n_messages} messages · ${fmt(sumChars(c))} chars of history</span>`, -1);
+
+  let idx = 0, prevT = 0;
+  c.timeline.forEach(e => {
+    const t0 = e.ev === "burst" ? e.start : e.t;
+    const gap = t0 - prevT;
+    if (gap > 2) addGap(w, gap, idx);
+    if (e.ev === "burst") {
+      const label = { thinking_delta: ["thinking_delta", "var(--model)"], text_delta: ["text_delta", "var(--model)"], input_json_delta: ["input_json_delta", "var(--tool)"], signature_delta: ["signature_delta", "var(--wire)"] }[e.delta] || [e.delta, "var(--wire)"];
+      addRow(w, "m", ms(e.start), `<span class="arrow">←</span><b style="color:${label[1]}">${label[0]}</b><span class="tag">× ${e.n}</span><span class="meta">${fmt(e.chars)} chars in ${ms(Math.max(e.end - e.start, 0))}</span>`, idx);
+      prevT = e.end;
+    } else {
+      const [nm, hint] = EVNAME[e.ev] || [e.ev, ""];
+      const extra = e.block ? `<span class="tag">${e.block}${e.name ? " · " + e.name : ""}</span>` : e.stop ? `<span class="tag" style="color:var(--model-ink)">${e.stop}</span>` : "";
+      addRow(w, "m", ms(e.t), `<span class="arrow">←</span><b>${nm}</b>${extra}<span class="meta">${hint}</span>`, idx);
+      prevT = e.t;
+    }
+    idx++;
+  });
+  if (c.tool) addRow(w, "h", ms(c.t_total), `<span class="arrow">→</span><b style="color:var(--tool-ink)">run ${c.tool.name}</b><span class="meta">result ${fmt(c.tool.result_chars)} chars → next request</span>`, idx + 1);
+  else addRow(w, "h", ms(c.t_total), `<span class="arrow">→</span><b>Done("completed")</b><span class="meta">no tool call; the loop returns</span>`, idx + 1);
+
+  // panes at rest: fully populated
+  $("#think-badge").textContent = c.thinking ? c.thinking.length + " chars" : "not used this turn";
+  $("#thinkpane").innerHTML = c.thinking ? esc(c.thinking.trim()) :
+    `<span class="empty">The model emitted no thinking block on this turn. Adaptive thinking is requested on every call; the model declined here.</span>`;
+  $("#toolhd").textContent = c.tool ? `tool call · ${c.tool.name}` : "final text · no tool call";
+  $("#tool-badge").textContent = c.tool ? fmt(c.tool.result_chars) + " chars back" : "end_turn";
+  $("#toolpane").innerHTML = c.tool
+    ? `<div style="color:var(--tool-ink);margin-bottom:8px">${esc(JSON.stringify(c.tool.input).slice(0, 520))}</div><hr style="border:0;border-top:1px solid var(--line);margin:10px 0"><p class="res">${esc(c.tool.result.slice(0, 1100))}${c.tool.result_chars > 1100 ? "\n…" : ""}</p>`
+    : `<p class="res">${esc(c.text.slice(0, 1400))}</p>`;
+
+  const u = c.usage;
+  $("#meters").innerHTML = [
+    ["fresh", "uncached input", u.input, "tok"], ["cache", "cache read", fmt(u.cache_read), "tok"],
+    ["", "cache write", fmt(u.cache_write), "tok"], ["", "output", fmt(u.output), "tok"],
+    ["", "stream events", c.events, ""], ["", "turn latency", (c.t_total / 1000).toFixed(2), "s"],
+  ].map(([cl, l, v, s]) => `<div class="meter ${cl}"><div class="l">${l}</div><div class="v">${v} <small>${s}</small></div></div>`).join("");
+
+  $("#clock").textContent = "t = 0 ms";
+  $("#bytesin").textContent = "0";
+  setConn(false, "connection open");
+}
+function sumChars(c) { return c.history.reduce((a, m) => a + m.blocks.reduce((b, x) => b + (x.chars || 0), 0), 0); }
+function addRow(w, side, t, html, i) {
+  const r = el("div", { class: "row " + side, "data-i": i }, w);
+  el("div", { class: "lt", text: t }, r);
+  el("div", { class: "node" }, r);
+  const rt = el("div", { class: "rt" }, r);
+  el("div", { class: "evt", html }, rt);
+}
+function addGap(w, gap, i) {
+  const big = gap > 250;
+  const g = el("div", { class: "gap" + (big ? " big" : ""), "data-gap": i }, w);
+  g.style.height = Math.max(10, Math.min(gap * 0.022, 86)) + "px";
+  el("div", { class: "bar" }, g);
+  if (gap > 60) el("div", { class: "lab", text: (big ? "connection open, nothing on the wire · " : "") + ms(gap) }, g);
+}
+function setConn(idle, text) {
+  $("#conn").classList.toggle("idle", idle);
+  $("#connstate").textContent = text;
+  $("#connhint").textContent = idle ? "socket alive, server generating" : "one response, held open for the whole turn";
+}
+
+function stop() { playing = false; if (raf) cancelAnimationFrame(raf); raf = null; $("#play").textContent = "▶ Play turn"; }
+
+function play() {
+  const c = call();
+  if (playing) { stop(); return; }
+  render();
+  playing = true; $("#play").textContent = "❚❚ Pause";
+  const rows = [...document.querySelectorAll("#wire .row")], gaps = [...document.querySelectorAll("#wire .gap")];
+  rows.forEach(r => r.classList.remove("on", "done"));
+  const tp = $("#thinkpane"), tlp = $("#toolpane");
+  if (c.thinking) tp.innerHTML = '<span class="caret"></span>';
+  if (c.tool) tlp.innerHTML = '<span class="empty">waiting for input_json_delta…</span>';
+  const t0 = performance.now();
+  let bytes = 0;
+  const seq = [];
+  let prevT = 0, i = 0;
+  c.timeline.forEach(e => {
+    const st = e.ev === "burst" ? e.start : e.t;
+    seq.push({ at: st, i, e }); prevT = e.ev === "burst" ? e.end : e.t; i++;
+  });
+  const total = c.t_total;
+  let fired = new Set();
+  const tick = now => {
+    if (!playing) return;
+    const t = (now - t0) * speed;
+    $("#clock").textContent = "t = " + (t >= 1000 ? (t / 1000).toFixed(2) + " s" : Math.round(t) + " ms");
+    // rows: row 0 is the POST; timeline rows are offset by 1
+    seq.forEach(({ at, i, e }) => {
+      const row = rows[i + 1];
+      if (!row) return;
+      if (t >= at && !fired.has(i)) {
+        fired.add(i);
+        rows.forEach(r => r.classList.remove("on"));
+        row.classList.add("on");
+        rows.slice(0, i + 1).forEach(r => r.classList.add("done"));
+        if (e.ev === "burst") {
+          bytes += e.chars;
+          if (e.delta === "thinking_delta") tp.innerHTML = esc(c.thinking.trim());
+          if (e.delta === "input_json_delta" && c.tool) tlp.innerHTML = `<div style="color:var(--tool-ink)">${esc(JSON.stringify(c.tool.input).slice(0, 520))}</div>`;
+          if (e.delta === "text_delta" && !c.tool) tlp.innerHTML = `<p class="res">${esc(c.text.slice(0, 1400))}</p>`;
+        } else bytes += 60;
+        $("#bytesin").textContent = fmt(bytes);
+        if (e.ev === "content_block_start" && e.block === "thinking") setConn(true, "open · model thinking");
+        else if (e.ev === "content_block_start" && e.block === "tool_use") setConn(true, "open · composing tool call");
+        else if (e.ev === "burst") setConn(false, "open · receiving");
+        else if (e.ev === "message_stop") setConn(false, "response complete");
+      }
+    });
+    // live gap counter
+    let shown = false;
+    gaps.forEach(g => {
+      const gi = +g.dataset.gap, row = rows[gi + 1];
+      if (!row) return;
+      const at = seq.find(s => s.i === gi);
+      if (at && t < at.at && !shown && fired.size >= gi) {
+        const lab = g.querySelector(".lab");
+        if (lab && g.classList.contains("big")) {
+          g.classList.add("run");
+          const prev = gi === 0 ? 0 : (seq[gi - 1].e.ev === "burst" ? seq[gi - 1].e.end : seq[gi - 1].e.t);
+          if (t > prev) { lab.textContent = "connection open, nothing on the wire · " + ms(t - prev); shown = true; }
+        }
+      } else g.classList.remove("run");
+    });
+    if (t >= total + 350) {
+      if (c.tool) tlp.innerHTML = `<div style="color:var(--tool-ink);margin-bottom:8px">${esc(JSON.stringify(c.tool.input).slice(0, 520))}</div><hr style="border:0;border-top:1px solid var(--line);margin:10px 0"><p class="res">${esc(c.tool.result.slice(0, 1100))}${c.tool.result_chars > 1100 ? "\n…" : ""}</p>`;
+      rows[rows.length - 1].classList.add("on");
+      setConn(false, c.tool ? "turn complete · tool running locally" : "turn complete · loop returns");
+      stop(); return;
+    }
+    raf = requestAnimationFrame(tick);
+  };
+  raf = requestAnimationFrame(tick);
+}
+$("#play").onclick = play;
+$("#reset").onclick = () => { stop(); render(); };
+document.querySelectorAll(".speed button").forEach(b => b.onclick = () => {
+  speed = +b.dataset.sp;
+  document.querySelectorAll(".speed button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+});
+render();
+
+/* ---------- 04 thinking ---------- */
+(function thinkFig() {
+  const f = $("#f-think");
+  f.innerHTML = `<div class="ft">Where the model chose to think</div><div class="fs">Thinking summary length per turn. Fourteen turns produced no thinking block at all; the five that did are the turns where the agent was stuck or deciding.</div>`;
+  const W = 920, H = 220, L = 46, B = 46, s = sv("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Thinking characters per turn" }, f);
+  const max = 320, bw = (W - L - 14) / 19;
+  [0, 100, 200, 300].forEach(v => {
+    const y = H - B - v / max * (H - B - 22);
+    sv("line", { x1: L, x2: W - 6, y1: y, y2: y, class: "gl" }, s);
+    const t = sv("text", { x: L - 8, y: y + 3.5, "text-anchor": "end", class: "ax" }, s); t.textContent = v;
+  });
+  D.calls.forEach((c, i) => {
+    const n = c.thinking.length, h = n / max * (H - B - 22), x = L + i * bw;
+    if (n) {
+      const r = sv("rect", { x: x + 2, y: H - B - h, width: bw - 4, height: h, rx: 3, fill: "var(--model)" }, s);
+      const ttl = sv("title", {}, r); ttl.textContent = `turn ${c.n}: ${n} characters of reasoning`;
+      const lb = sv("text", { x: x + bw / 2, y: H - B - h - 7, "text-anchor": "middle", class: "lb", fill: "var(--model-ink)" }, s); lb.textContent = n;
+    } else {
+      sv("rect", { x: x + 2, y: H - B - 3, width: bw - 4, height: 3, rx: 1.5, fill: "var(--line-2)" }, s);
+    }
+    const t = sv("text", { x: x + bw / 2, y: H - B + 15, "text-anchor": "middle", class: "ax" }, s); t.textContent = c.n;
+  });
+  const cap = sv("text", { x: L, y: H - 12, class: "ax" }, s); cap.textContent = "TURN";
+  sv("line", { x1: L, x2: W - 6, y1: H - B, y2: H - B, stroke: "var(--line-2)", "stroke-width": 1 }, s);
+  const l = el("div", { class: "legend", html: `<span><i style="background:var(--model)"></i>thinking summary, characters</span><span><i style="background:var(--line-2)"></i>no thinking block emitted</span>` }, f);
+})();
+
+(function thinkList() {
+  const box = $("#thinklist");
+  D.calls.filter(c => c.thinking).forEach(c => {
+    const p = el("div", { class: "panel pad", style: "margin-top:12px;border-left:3px solid var(--model)" }, box);
+    el("div", { class: "eyebrow", text: `turn ${c.n} · before calling ${c.tool ? c.tool.name : "—"} · ${c.thinking.length} chars · ${ms(c.t_total)} turn latency` }, p);
+    el("div", { style: "font-size:16.5px;line-height:1.6;margin-top:9px;font-style:italic", text: c.thinking.trim() }, p);
+  });
+})();
+
+(function gapFig() {
+  const s = $("#gapfig"), W = 900, H = 200, y = 118, max = 7400;
+  const x = v => 60 + v / max * (W - 130);
+  sv("line", { x1: x(0), x2: x(max), y1: y, y2: y, stroke: "var(--line-2)", "stroke-width": 3, "stroke-linecap": "round" }, s);
+  [[814, 4704, "model thinking \u00b7 3.89 s of silence", 0], [4718, 7059, "composing the edit \u00b7 2.34 s", 1]].forEach(([a, b, lab, i]) => {
+    sv("rect", { x: x(a), y: y - 15, width: x(b) - x(a), height: 30, rx: 5,
+      fill: i ? "var(--tool-soft)" : "var(--model-soft)", stroke: i ? "var(--tool)" : "var(--model)",
+      "stroke-width": 1.5, "stroke-dasharray": "5 4" }, s);
+    const t = sv("text", { x: (x(a) + x(b)) / 2, y: y + 5, "text-anchor": "middle", class: "lb",
+      fill: i ? "var(--tool-ink)" : "var(--model-ink)", "font-weight": "700" }, s);
+    t.textContent = lab;
+  });
+  // four well-separated marks; the two events 32 ms apart are merged into one label
+  const marks = [
+    [0, "request sent", "var(--harness)", "start", 50],
+    [813, "message_start, then thinking block announced", "var(--model)", "start", 76],
+    [4704, "summary arrives \u00b7 thinking_delta \u00d7 25", "var(--model)", "middle", 50],
+    [7075, "input_json_delta \u00d7 300, then message_stop", "var(--tool)", "end", 76],
+  ];
+  marks.forEach(([t, lab, col, anchor, up]) => {
+    sv("line", { x1: x(t), x2: x(t), y1: y - 15, y2: y - up + 10, stroke: col, "stroke-width": 1.5 }, s);
+    sv("circle", { cx: x(t), cy: y - 15, r: 4, fill: col }, s);
+    const tx = sv("text", { x: x(t), y: y - up, "text-anchor": anchor, class: "lb", fill: "var(--ink-2)" }, s);
+    tx.textContent = lab;
+  });
+  [[0, "0 ms", "start"], [813, "814 ms", "middle"], [4704, "4,704 ms", "middle"], [7091, "7,091 ms", "end"]].forEach(([t, lab, a]) => {
+    const tt = sv("text", { x: x(t), y: y + 32, "text-anchor": a, class: "ax" }, s);
+    tt.textContent = lab;
+  });
+  const note = sv("text", { x: 60, y: 180, class: "lb", fill: "var(--ink-3)" }, s);
+  note.textContent = "Turn 16 \u00b7 the socket is open for all 7.09 s; 88% of that time nothing crosses it.";
+})();
+
+(function gapStats() {
+  const all = [];
+  D.calls.forEach(c => {
+    let prev = 0;
+    c.timeline.forEach(e => { const t = e.ev === "burst" ? e.start : e.t; all.push(t - prev); prev = e.ev === "burst" ? e.end : e.t; });
+  });
+  const thinkGaps = D.calls.filter(c => c.thinking).map(c => {
+    const st = c.timeline.find(e => e.ev === "content_block_start" && e.block === "thinking");
+    const b = c.timeline.find(e => e.ev === "burst" && e.delta === "thinking_delta");
+    return b && st ? b.start - st.t : 0;
+  }).filter(Boolean).sort((a, b) => a - b);
+  $("#gaprange").textContent = (thinkGaps[0] / 1000).toFixed(1) + " to " + (thinkGaps[thinkGaps.length - 1] / 1000).toFixed(1) + " seconds";
+  $("#medgap").textContent = "0.2 ms";
+  $("#maxgap").textContent = "3.89 s";
+  $("#burstgap").textContent = "0.2 ms";
+})();
+
+/* ---------- 05 context ---------- */
+(function histFig() {
+  const f = $("#f-hist");
+  f.innerHTML = `<div class="ft">The history resent on every request</div><div class="fs">Each column is one turn's outgoing message list. It only ever grows, by exactly one assistant message and one tool-result message per turn.</div>`;
+  const W = 920, H = 250, L = 46, B = 40, s = sv("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Messages resent per turn" }, f);
+  const max = 40, bw = (W - L - 14) / 19;
+  [0, 10, 20, 30, 40].forEach(v => {
+    const y = H - B - v / max * (H - B - 18);
+    sv("line", { x1: L, x2: W - 6, y1: y, y2: y, class: "gl" }, s);
+    const t = sv("text", { x: L - 8, y: y + 3.5, "text-anchor": "end", class: "ax" }, s); t.textContent = v;
+  });
+  const unit = (H - B - 18) / max;
+  D.calls.forEach((c, i) => {
+    const x = L + i * bw;
+    let acc = 0;
+    const counts = { user: 0, assistant: 0 };
+    c.history.forEach(m => {
+      const isTool = m.blocks.some(b => b.type === "tool_result");
+      const col = m.role === "assistant" ? "var(--model)" : isTool ? "var(--tool)" : "var(--harness)";
+      sv("rect", { x: x + 2, y: H - B - (acc + 1) * unit + .6, width: bw - 4, height: unit - 1.2, fill: col, opacity: .92 }, s);
+      acc++;
+    });
+    const ttl = sv("title", {}, sv("rect", { x: x, y: 10, width: bw, height: H - B - 10, fill: "transparent" }, s));
+    ttl.textContent = `turn ${c.n}: ${c.n_messages} messages, ${fmt(c.usage.cache_read + c.usage.cache_write + c.usage.input)} input tokens`;
+    const t = sv("text", { x: x + bw / 2, y: H - B + 15, "text-anchor": "middle", class: "ax" }, s); t.textContent = c.n;
+  });
+  sv("line", { x1: L, x2: W - 6, y1: H - B, y2: H - B, stroke: "var(--line-2)", "stroke-width": 1 }, s);
+  const cap = sv("text", { x: L, y: H - 10, class: "ax" }, s); cap.textContent = "TURN";
+  el("div", { class: "legend", html: `<span><i style="background:var(--harness)"></i>the original issue</span><span><i style="background:var(--model)"></i>assistant turn (thinking + tool call, replayed verbatim)</span><span><i style="background:var(--tool)"></i>tool results</span>` }, f);
+})();
+
+(function cacheFig() {
+  const f = $("#f-cache");
+  f.innerHTML = `<div class="ft">Cache reads climb; fresh input never moves</div><div class="fs">Input tokens billed per turn, split by how they were billed. The orange line is what the prefix cache absorbed.</div>`;
+  const W = 920, H = 250, L = 62, B = 40, s = sv("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Cache reads versus uncached input per turn" }, f);
+  const max = 13000, bw = (W - L - 14) / 19, x = i => L + i * bw + bw / 2, y = v => H - B - v / max * (H - B - 20);
+  [0, 4000, 8000, 12000].forEach(v => {
+    sv("line", { x1: L, x2: W - 6, y1: y(v), y2: y(v), class: "gl" }, s);
+    const t = sv("text", { x: L - 8, y: y(v) + 3.5, "text-anchor": "end", class: "ax" }, s); t.textContent = fmt(v);
+  });
+  let d = "", area = `M ${x(0)} ${y(0)}`;
+  D.calls.forEach((c, i) => { d += (i ? " L " : "M ") + x(i) + " " + y(c.usage.cache_read); area += ` L ${x(i)} ${y(c.usage.cache_read)}`; });
+  area += ` L ${x(18)} ${y(0)} Z`;
+  sv("path", { d: area, fill: "var(--model)", opacity: .13 }, s);
+  sv("path", { d, fill: "none", stroke: "var(--model)", "stroke-width": 2.5, "stroke-linejoin": "round" }, s);
+  D.calls.forEach((c, i) => {
+    const cc = sv("circle", { cx: x(i), cy: y(c.usage.cache_read), r: 4, fill: "var(--model)", stroke: "var(--panel)", "stroke-width": 2 }, s);
+    const ttl = sv("title", {}, cc); ttl.textContent = `turn ${c.n}: ${fmt(c.usage.cache_read)} cached, ${c.usage.input} fresh, ${fmt(c.usage.cache_write)} written`;
+    sv("circle", { cx: x(i), cy: y(c.usage.input), r: 3, fill: "var(--harness)" }, s);
+    if (i % 3 === 0 || i === 18) { const t = sv("text", { x: x(i), y: H - B + 15, "text-anchor": "middle", class: "ax" }, s); t.textContent = c.n; }
+  });
+  const lab = sv("text", { x: x(18) - 4, y: y(12039) - 12, "text-anchor": "end", class: "lb", fill: "var(--model-ink)", "font-weight": "700" }, s);
+  lab.textContent = "12,039 read from cache";
+  const lab2 = sv("text", { x: x(9), y: y(0) - 9, "text-anchor": "middle", class: "lb", fill: "var(--harness-ink)", "font-weight": "700" }, s);
+  lab2.textContent = "uncached input: 2 tokens, every single turn";
+  sv("line", { x1: L, x2: W - 6, y1: H - B, y2: H - B, stroke: "var(--line-2)", "stroke-width": 1 }, s);
+  el("div", { class: "legend", html: `<span><i style="background:var(--model)"></i>cache read (billed at 0.1×)</span><span><i style="background:var(--harness)"></i>uncached input (full price)</span>` }, f);
+})();
+
+$("#promptcode").innerHTML = `<span class="c"># tinyorbit/prompt.py — the cache boundary is a design decision, not a default</span>
+<span class="kw">return</span> [
+    <span class="c"># ── cached prefix: byte-identical on every turn ──</span>
+    {<span class="s">"type"</span>: <span class="s">"text"</span>, <span class="s">"text"</span>: static,
+     <span class="hl"><span class="s">"cache_control"</span>: {<span class="s">"type"</span>: <span class="s">"ephemeral"</span>}</span>},
+
+    <span class="c"># ── dynamic boundary: anything below may change between turns ──</span>
+    {<span class="s">"type"</span>: <span class="s">"text"</span>, <span class="s">"text"</span>: <span class="s">f"Today's date: {date.today()}"</span>},
+]`;
+
+/* ---------- 06 tools ---------- */
+(function toolTable() {
+  const t = $("#t-tools");
+  t.innerHTML = `<tr><th class="n">turn</th><th>tool</th><th>what it asked for</th><th class="n">result</th><th class="n">latency</th><th>thought first</th></tr>` +
+    D.calls.map(c => {
+      const inp = c.tool ? (c.tool.input.command || c.tool.input.file_path || c.tool.input.pattern || JSON.stringify(c.tool.input)) : "— final answer —";
+      return `<tr class="${c.thinking ? "think" : ""}"><td class="n mono">${c.n}</td><td class="mono"><b style="color:${c.tool ? "var(--tool-ink)" : "var(--ink-3)"}">${c.tool ? c.tool.name : "none"}</b></td>
+      <td class="mono" style="font-size:12px;max-width:400px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(String(inp).slice(0, 150))}</div></td>
+      <td class="n mono">${c.tool ? fmt(c.tool.result_chars) : "—"}</td><td class="n mono">${(c.t_total / 1000).toFixed(1)}s</td>
+      <td class="mono" style="font-size:11.5px;color:var(--model-ink)">${c.thinking ? "yes · " + c.thinking.length + " chars" : ""}</td></tr>`;
+    }).join("");
+})();
+
+/* ---------- 07 stop ---------- */
+(function stopTable() {
+  const seen = { tool_use: 18, end_turn: 1 };
+  const rows = [
+    ["tool_use", seen.tool_use, "Run the tools, append the results, loop again.", true],
+    ["end_turn", seen.end_turn, "No tool call: emit Done(\"completed\") with the full history.", true],
+    ["max_tokens", 0, "Retry once at a 64K cap, then nudge with a continue instruction, up to three times.", false],
+    ["refusal", 0, "Terminal. The category is reported; a server-side fallback model may have already been tried.", false],
+    ["pause_turn", 0, "Resume the same turn without treating it as complete.", false],
+  ];
+  $("#t-stop").innerHTML = `<tr><th>stop_reason</th><th class="n">seen here</th><th>what the loop does</th></tr>` +
+    rows.map(([r, n, d, hit]) => `<tr><td class="mono"><b style="color:${hit ? "var(--model-ink)" : "var(--ink-3)"}">${r}</b></td><td class="n mono">${n || "—"}</td><td style="color:${hit ? "var(--ink)" : "var(--ink-2)"}">${d}</td></tr>`).join("");
+  $("#finaltext").textContent = D.final_text.trim();
+})();
+
+$("#repro").innerHTML = `<span class="c"># run the agent with the wire recorder on</span>
+<span class="kw">export</span> TINYORBIT_TRACE=/tmp/trace.jsonl
+uv run python main.py --print <span class="hl">--thinking-display summarized</span> <span class="s">"fix the failing test"</span>
+
+<span class="c"># one JSON object per stream event</span>
+{<span class="s">"kind"</span>:<span class="s">"event"</span>,<span class="s">"call"</span>:16,<span class="s">"t"</span>:814.3,<span class="s">"type"</span>:<span class="s">"content_block_start"</span>,<span class="s">"block"</span>:<span class="s">"thinking"</span>}
+{<span class="s">"kind"</span>:<span class="s">"event"</span>,<span class="s">"call"</span>:16,<span class="s">"t"</span>:4703.7,<span class="s">"type"</span>:<span class="s">"content_block_delta"</span>,<span class="s">"delta"</span>:<span class="s">"thinking_delta"</span>,<span class="s">"chars"</span>:1,<span class="s">"text"</span>:<span class="s">"I"</span>}
+<span class="c">#                    ↑ 3,889 ms of an open, silent connection</span>`;
+</script>

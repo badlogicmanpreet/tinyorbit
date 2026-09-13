@@ -1,0 +1,370 @@
+[
+ {
+  "dir": "20250522_tools_claude-4-opus",
+  "name": "Tools + Claude 4 Opus (2025-05-22)",
+  "agent": "Tools",
+  "full_pct": null,
+  "usd_per_inst": null,
+  "calls_per_inst": null,
+  "easy10": 9,
+  "hard10": 4,
+  "hard_misses": [
+   "django__django-10554",
+   "sympy__sympy-17630",
+   "sphinx-doc__sphinx-7590",
+   "astropy__astropy-13398",
+   "pytest-dev__pytest-10356",
+   "pylint-dev__pylint-4551"
+  ]
+ },
+ {
+  "dir": "20250603_Refact_Agent_claude-4-sonnet",
+  "name": "Refact.ai Agent + Claude 4 Sonnet + o4-mini",
+  "agent": "Refact.ai Agent",
+  "full_pct": null,
+  "usd_per_inst": null,
+  "calls_per_inst": null,
+  "easy10": 10,
+  "hard10": 2,
+  "hard_misses": [
+   "django__django-16560",
+   "django__django-11885",
+   "django__django-10554",
+   "sympy__sympy-17630",
+   "sphinx-doc__sphinx-7590",
+   "astropy__astropy-13398",
+   "pytest-dev__pytest-10356",
+   "pylint-dev__pylint-4551"
+  ]
+ },
+ {
+  "dir": "20250610_augment_agent_v1",
+  "name": "Augment Agent v1",
+  "agent": "Augment Agent v1",
+  "full_pct": null,
+  "usd_per_inst": null,
+  "calls_per_inst": null,
+  "easy10": 8,
+  "hard10": 2,
+  "hard_misses": [
+   "django__django-11885",
+   "django__django-10554",
+   "sympy__sympy-17630",
+   "sphinx-doc__sphinx-7590",
+   "astropy__astropy-13398",
+   "pytest-dev__pytest-10356",
+   "pydata__xarray-3993",
+   "pylint-dev__pylint-4551"
+  ]
+ },
+ {
+  "dir": "20250612_trae",
+  "name": "TRAE + Claude Sonnet 4 + Opus 4 + Sonnet 3.7 + Gemini 2.5 Pro",
+  "agent": "TRAE",
+  "full_pct": null,
+  "usd_per_inst": null,
+  "calls_per_inst": null,
+  "easy10": 9,
+  "hard10": 3,
+  "hard_misses": [
+   "django__django-11885",
+   "django__django-10554",
+   "sympy__sympy-17630",
+   "sphinx-doc__sphinx-7590",
+   "astropy__astropy-13398",
+   "pytest-dev__pytest-10356",
+   "pylint-dev__pylint-4551"
+  ]
+ },
+ {
+  "dir": "20250807_openhands_gpt5",
+  "name": "OpenHands + GPT-5",
+  "agent": "OpenHands",
+  "full_pct": null,
+  "usd_per_inst": null,
+  "calls_per_inst": null,
+  "easy10": 8,
+  "hard10": 3,
+  "hard_misses": [
+   "django__django-11885",
+   "django__django-10554",
+   "sympy__sympy-17630",
+   "sphinx-doc__sphinx-7590",
+   "astropy__astropy-13398",
+   "pytest-dev__pytest-10356",
+   "pylint-dev__pylint-4551"
+  ]
+ },
+ {
+  "dir": "20250901_warp",
+  "name": "Warp",
+  "agent": "Warp",
+  "full_pct": null,
+  "usd_per_inst": null,
+  "calls_per_inst": null,
+  "easy10": 8,
+  "hard10": 3,
+  "hard_misses": [
+   "django__django-10554",
+   "sympy__sympy-17630",
+   "sympy__sympy-13878",
+   "sphinx-doc__sphinx-7590",
+   "astropy__astropy-13398",
+   "pytest-dev__pytest-10356",
+   "pylint-dev__pylint-4551"
+  ]
+ },
+ {
+  "dir": "20250928_trae_doubao_seed_code",
+  "name": "TRAE + Doubao-Seed-Code",
+  "agent": "TRAE",
+  "full_pct": null,
+  "usd_per_inst": null,
+  "calls_per_inst": null,
+  "easy10": 9,
+  "hard10": 4,
+  "hard_misses": [
+   "django__django-10554",
+   "sympy__sympy-17630",
+   "sphinx-doc__sphinx-7590",
+   "astropy__astropy-13398",
+   "pytest-dev__pytest-10356",
+   "pylint-dev__pylint-4551"
+  ]
+ },
+ {
+  "dir": "20251103_SalesforceAIResearch_SAGE_OpenHands",
+  "name": "Salesforce AI Research SAGE (OpenHands)",
+  "agent": "Salesforce AI Research SAGE",
+  "full_pct": null,
+  "usd_per_inst": null,
+  "calls_per_inst": null,
+  "easy10": 8,
+  "hard10": 2,
+  "hard_misses": [
+   "django__django-11885",
+   "django__django-10554",
+   "sympy__sympy-17630",
+   "sphinx-doc__sphinx-7590",
+   "astropy__astropy-13398",
+   "pytest-dev__pytest-10356",
+   "pydata__xarray-3993",
+   "pylint-dev__pylint-4551"
+  ]
+ },
+ {
+  "dir": "20251124_mini-v1.16.0_gpt-5.1-codex",
+  "name": "GPT 5.1 Codex (medium)",
+  "agent": "mini-SWE-agent",
+  "full_pct": 66.0,
+  "usd_per_inst": 0.5888823500000001,
+  "calls_per_inst": 23.882,
+  "easy10": 7,
+  "hard10": 2,
+  "hard_misses": [
+   "django__django-16560",
+   "django__django-10554",
+   "sympy__sympy-17630",
+   "sympy__sympy-13878",
+   "sphinx-doc__sphinx-7590",
+   "astropy__astropy-13398",
+   "pytest-dev__pytest-10356",
+   "pylint-dev__pylint-4551"
+  ]
+ },
+ {
+  "dir": "20251127_openhands_claude-opus-4-5",
+  "name": "OpenHands + Claude Opus 4.5",
+  "agent": "OpenHands",
+  "full_pct": null,
+  "usd_per_inst": null,
+  "calls_per_inst": null,
+  "easy10": 9,
+  "hard10": 3,
+  "hard_misses": [
+   "django__django-16560",
+   "django__django-11885",
+   "django__django-10554",
+   "sympy__sympy-17630",
+   "sphinx-doc__sphinx-7590",
+   "astropy__astropy-13398",
+   "pylint-dev__pylint-4551"
+  ]
+ },
+ {
+  "dir": "20251205_sonar-foundation-agent_claude-opus-4-5",
+  "name": "Sonar Foundation Agent + Claude 4.5 Opus",
+  "agent": "Sonar Foundation Agent",
+  "full_pct": null,
+  "usd_per_inst": null,
+  "calls_per_inst": null,
+  "easy10": 10,
+  "hard10": 5,
+  "hard_misses": [
+   "django__django-16560",
+   "django__django-10554",
+   "sphinx-doc__sphinx-7590",
+   "astropy__astropy-13398",
+   "pylint-dev__pylint-4551"
+  ]
+ },
+ {
+  "dir": "20251215_livesweagent_claude-opus-4-5",
+  "name": "live-SWE-agent + Claude 4.5 Opus medium (20251101)",
+  "agent": "live-SWE-agent",
+  "full_pct": null,
+  "usd_per_inst": null,
+  "calls_per_inst": null,
+  "easy10": 10,
+  "hard10": 3,
+  "hard_misses": [
+   "django__django-11885",
+   "django__django-10554",
+   "sympy__sympy-17630",
+   "sphinx-doc__sphinx-7590",
+   "astropy__astropy-13398",
+   "pytest-dev__pytest-10356",
+   "pylint-dev__pylint-4551"
+  ]
+ },
+ {
+  "dir": "20260217_mini-v2.0.0_claude-4-5-haiku-high",
+  "name": "Claude 4.5 Haiku (high)",
+  "agent": "mini-SWE-agent",
+  "full_pct": 66.6,
+  "usd_per_inst": 0.33092443610000005,
+  "calls_per_inst": 66.154,
+  "easy10": 8,
+  "hard10": 2,
+  "hard_misses": [
+   "django__django-16560",
+   "django__django-10554",
+   "sympy__sympy-17630",
+   "sphinx-doc__sphinx-7590",
+   "astropy__astropy-13398",
+   "pytest-dev__pytest-10356",
+   "pydata__xarray-3993",
+   "pylint-dev__pylint-4551"
+  ]
+ },
+ {
+  "dir": "20260217_mini-v2.0.0_claude-4-5-opus-high",
+  "name": "Claude 4.5 Opus (high)",
+  "agent": "mini-SWE-agent",
+  "full_pct": 76.8,
+  "usd_per_inst": 0.753907997,
+  "calls_per_inst": 32.896,
+  "easy10": 10,
+  "hard10": 2,
+  "hard_misses": [
+   "django__django-16560",
+   "django__django-11885",
+   "django__django-10554",
+   "sympy__sympy-17630",
+   "sphinx-doc__sphinx-7590",
+   "astropy__astropy-13398",
+   "pytest-dev__pytest-10356",
+   "pylint-dev__pylint-4551"
+  ]
+ },
+ {
+  "dir": "20260217_mini-v2.0.0_claude-4-5-sonnet-high",
+  "name": "Claude 4.5 Sonnet (high)",
+  "agent": "mini-SWE-agent",
+  "full_pct": 71.4,
+  "usd_per_inst": 0.6578964984000001,
+  "calls_per_inst": 48.3,
+  "easy10": 9,
+  "hard10": 2,
+  "hard_misses": [
+   "django__django-16560",
+   "django__django-11885",
+   "django__django-10554",
+   "sympy__sympy-17630",
+   "sphinx-doc__sphinx-7590",
+   "astropy__astropy-13398",
+   "pytest-dev__pytest-10356",
+   "pylint-dev__pylint-4551"
+  ]
+ },
+ {
+  "dir": "20260217_mini-v2.0.0_claude-4-6-opus",
+  "name": "Claude 4.6 Opus",
+  "agent": "mini-SWE-agent",
+  "full_pct": 75.6,
+  "usd_per_inst": 0.5515226445,
+  "calls_per_inst": 28.932,
+  "easy10": 8,
+  "hard10": 2,
+  "hard_misses": [
+   "django__django-16560",
+   "django__django-11885",
+   "django__django-10554",
+   "sympy__sympy-17630",
+   "sphinx-doc__sphinx-7590",
+   "astropy__astropy-13398",
+   "pytest-dev__pytest-10356",
+   "pylint-dev__pylint-4551"
+  ]
+ },
+ {
+  "dir": "20260217_mini-v2.0.0_gpt-5-2-high",
+  "name": "GPT 5.2 (high)",
+  "agent": "mini-SWE-agent",
+  "full_pct": 72.8,
+  "usd_per_inst": 0.4735670177,
+  "calls_per_inst": 35.046,
+  "easy10": 9,
+  "hard10": 3,
+  "hard_misses": [
+   "django__django-10554",
+   "sympy__sympy-17630",
+   "sympy__sympy-13878",
+   "sphinx-doc__sphinx-7590",
+   "astropy__astropy-13398",
+   "pytest-dev__pytest-10356",
+   "pylint-dev__pylint-4551"
+  ]
+ },
+ {
+  "dir": "20260226_mini-v2.0.0_gemini-3-pro-high",
+  "name": "Gemini 3 Pro",
+  "agent": "mini-SWE-agent",
+  "full_pct": 69.6,
+  "usd_per_inst": 0.9600198564,
+  "calls_per_inst": 51.282,
+  "easy10": 0,
+  "hard10": 0,
+  "hard_misses": [
+   "django__django-16560",
+   "django__django-11885",
+   "django__django-10554",
+   "sympy__sympy-17630",
+   "sympy__sympy-13878",
+   "sphinx-doc__sphinx-7590",
+   "astropy__astropy-13398",
+   "pytest-dev__pytest-10356",
+   "pydata__xarray-3993",
+   "pylint-dev__pylint-4551"
+  ]
+ },
+ {
+  "dir": "20260901_mini-v2.4.2_gemini-3-5-flash",
+  "name": "Gemini 3.5 Flash",
+  "agent": "mini-SWE-agent",
+  "full_pct": 71.8,
+  "usd_per_inst": null,
+  "calls_per_inst": 39.03,
+  "easy10": 9,
+  "hard10": 3,
+  "hard_misses": [
+   "django__django-16560",
+   "django__django-11885",
+   "django__django-10554",
+   "sphinx-doc__sphinx-7590",
+   "astropy__astropy-13398",
+   "pytest-dev__pytest-10356",
+   "pylint-dev__pylint-4551"
+  ]
+ }
+]

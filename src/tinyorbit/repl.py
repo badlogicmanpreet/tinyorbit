@@ -16,8 +16,8 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from tinyorbit.api import StatusEvent, TextDelta, ThinkingDelta, make_client
 from tinyorbit.permissions import PermissionMode, PermissionPolicy
+from tinyorbit.providers import StatusEvent, TextDelta, ThinkingDelta, resolve_provider
 from tinyorbit.query import AssistantTurn, Done, QueryParams, ToolFinished, ToolStarted, query
 from tinyorbit.state import SessionState
 from tinyorbit.tools import ToolUseContext
@@ -65,6 +65,9 @@ class Renderer:
             print(_paint(color, f"    └ {first[:110]}{suffix}"))
         elif isinstance(event, AssistantTurn):
             self._newline()
+        elif isinstance(event, Done):
+            if event.reason not in ("completed",):
+                print(_paint(YELLOW, f"  [turn ended: {event.reason}]"))
 
     def _newline(self) -> None:
         if self._wrote_text:
@@ -72,17 +75,101 @@ class Renderer:
             self._wrote_text = False
 
 
-def _make_context(config: "Config", policy: PermissionPolicy) -> ToolUseContext:
+def _open_session(config: "Config") -> SessionState:
+    """Fresh session, or one restored from disk when --resume was given.
+
+    fork keeps the loaded history but takes a new id, so the original file is
+    never overwritten — the two timelines diverge from here. A resume id that
+    does not exist is a soft miss: warn and start clean rather than abort.
+    """
+    from tinyorbit.sessions import load_session, restore_into
+
+    if not config.resume_session:
+        return SessionState()
+    saved = load_session(config.data_dir, config.resume_session)
+    if saved is None:
+        print(_paint(YELLOW, f"  · no saved session {config.resume_session!r}; starting fresh"))
+        return SessionState()
+    session = restore_into(saved, fork=config.fork_session)
+    where = f"forked {saved.session_id} → {session.session_id}" if config.fork_session \
+        else f"resumed {saved.session_id}"
+    print(_paint(DIM, f"  · {where} ({saved.turns} turn(s), {len(session.messages)} message(s))"))
+    return session
+
+
+def _make_context(config: "Config", policy: PermissionPolicy, provider=None,
+                  session: "SessionState | None" = None) -> ToolUseContext:
+    # The subagent runtime is attached only when agents were discovered and a
+    # provider exists (i.e. a live run, not a unit test). It carries the pieces
+    # the Task tool needs but a plain tool never does: provider, model, cost.
+    subagent = None
+    agents = config.capabilities.get("agents") or []
+    if agents and provider is not None and session is not None:
+        from tinyorbit.agents import SubagentContext
+
+        subagent = SubagentContext(
+            config=config, provider=provider, cost=session.cost, agents=agents,
+        )
     return ToolUseContext(
         cwd=config.cwd,
         abort=asyncio.Event(),
         permissions=policy,
         data_dir=config.data_dir,
+        subagent=subagent,
+        hooks=config.capabilities.get("hooks") or [],
     )
 
 
-async def run_turn(config: "Config", session: SessionState, ctx: ToolUseContext, client, prompt: str) -> str:
-    """Run one user turn to completion. Returns the final assistant text."""
+async def _start_mcp(config: "Config"):
+    """Connect any configured MCP servers and merge their tools into the pool.
+
+    Runs in the REPL's event loop because MCP discovery is async while
+    bootstrap.setup() is not. Returns the live session (to close on shutdown),
+    or None when no server is configured — the common, zero-cost case.
+    """
+    servers = config.capabilities.get("mcp_servers") or []
+    if not servers:
+        return None
+    from tinyorbit.mcp import connect_mcp_servers
+
+    session = await connect_mcp_servers(servers)
+    if session.tools:
+        config.capabilities["tools"] = config.capabilities["tools"] + session.tools
+        print(_paint(DIM, f"  · MCP: {len(session.tools)} tool(s) from "
+                          f"{len(session.clients)} server(s)"))
+    for err in session.errors:
+        print(_paint(YELLOW, f"  · MCP server unavailable — {err}"))
+    return session
+
+
+def _apply_tool_filter(config: "Config") -> None:
+    """Narrow the advertised tool pool per --allowed-tools/--disallowed-tools.
+
+    Runs after MCP tools are merged, so it is the single choke point over the
+    whole pool (built-ins, Task/Skill, MCP). A no-op when neither is set.
+    """
+    if not config.allowed_tools and not config.disallowed_tools:
+        return
+    from tinyorbit.tools import select_tools
+
+    before = config.capabilities.get("tools") or []
+    kept = select_tools(before, config.allowed_tools or None, config.disallowed_tools or None)
+    config.capabilities["tools"] = kept
+    if len(kept) != len(before):
+        dropped = sorted({t.name for t in before} - {t.name for t in kept})
+        print(_paint(DIM, f"  · tools: {len(kept)}/{len(before)} enabled "
+                          f"(hidden: {', '.join(dropped)})"))
+
+
+async def run_turn(config: "Config", session: SessionState, ctx: ToolUseContext, provider, prompt: str,
+                   sink=None) -> str:
+    """Run one user turn to completion. Returns the final assistant text.
+
+    sink is the event consumer: the terminal Renderer by default, but an
+    embedder (see runtime.Runtime) passes its own callback to observe the same
+    event stream without any terminal output. Session bookkeeping (history,
+    turn count, persistence) happens here regardless of who is watching.
+    """
     session.messages.append({"role": "user", "content": prompt})
     params = QueryParams(
         messages=session.messages,
@@ -90,7 +177,7 @@ async def run_turn(config: "Config", session: SessionState, ctx: ToolUseContext,
         tools=config.capabilities["tools"],
         ctx=ctx,
         model=config.model,
-        client=client,
+        provider=provider,
         cost=session.cost,
         source="print" if config.print_mode else "repl",
         max_turns=config.max_turns,
@@ -98,17 +185,20 @@ async def run_turn(config: "Config", session: SessionState, ctx: ToolUseContext,
         fallbacks=config.fallbacks,
         thinking_display=config.thinking_display,
     )
-    renderer = Renderer()
+    handle = sink if sink is not None else Renderer().handle
     final_text = ""
     async for event in query(params):
-        renderer.handle(event)
+        handle(event)
         if isinstance(event, AssistantTurn):
             final_text = "".join(b.text for b in event.message.content if getattr(b, "type", "") == "text")
         elif isinstance(event, Done):
             session.messages[:] = event.messages
             session.turns += 1
-            if event.reason not in ("completed",):
-                print(_paint(YELLOW, f"  [turn ended: {event.reason}]"))
+    # Persist after every turn so the session is resumable even if the process
+    # is killed mid-conversation. Best-effort: a write failure never fails a turn.
+    from tinyorbit.sessions import save_session
+
+    save_session(config.data_dir, session, model=config.model)
     return final_text
 
 
@@ -119,15 +209,19 @@ def run_print_mode(config: "Config") -> int:
         print("--print needs a prompt", file=sys.stderr)
         return 2
     policy = PermissionPolicy(mode=config.permission_mode, ask=None, allow_rules=config.allow_rules)
-    session = SessionState()
+    session = _open_session(config)
 
     async def main() -> str:
-        client = make_client()
-        ctx = _make_context(config, policy)
+        provider = resolve_provider(provider=config.provider, model=config.model)
+        mcp = await _start_mcp(config)
+        _apply_tool_filter(config)
+        ctx = _make_context(config, policy, provider, session)
         try:
-            return await run_turn(config, session, ctx, client, config.initial_prompt)
+            return await run_turn(config, session, ctx, provider, config.initial_prompt)
         finally:
-            await client.close()
+            if mcp is not None:
+                await mcp.aclose()
+            await provider.close()
 
     asyncio.run(main())
     print()
@@ -170,11 +264,13 @@ Ctrl+C during a turn interrupts it; at the prompt it exits."""
 
 def run_interactive(config: "Config") -> int:
     policy = PermissionPolicy(mode=config.permission_mode, allow_rules=config.allow_rules)
-    session = SessionState()
+    session = _open_session(config)
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    client = make_client()
-    ctx = _make_context(config, policy)
+    provider = resolve_provider(provider=config.provider, model=config.model)
+    mcp = loop.run_until_complete(_start_mcp(config))
+    _apply_tool_filter(config)
+    ctx = _make_context(config, policy, provider, session)
 
     async def ask(prompt: str) -> bool:
         print(_paint(YELLOW, f"\n  ? allow {prompt}"))
@@ -211,11 +307,13 @@ def run_interactive(config: "Config") -> int:
             ctx.abort.clear()
             loop.add_signal_handler(signal.SIGINT, ctx.abort.set)
             try:
-                loop.run_until_complete(run_turn(config, session, ctx, client, line))
+                loop.run_until_complete(run_turn(config, session, ctx, provider, line))
             finally:
                 loop.remove_signal_handler(signal.SIGINT)
     finally:
-        loop.run_until_complete(client.close())
+        if mcp is not None:
+            loop.run_until_complete(mcp.aclose())
+        loop.run_until_complete(provider.close())
         loop.close()
     print(_paint(DIM, session.cost.summary(config.model)))
     return 0

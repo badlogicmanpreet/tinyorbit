@@ -12,13 +12,19 @@ from dataclasses import dataclass, field
 from typing import Any
 
 # (input, output) USD per million tokens. Cache reads bill at 0.1x input,
-# cache writes at 1.25x input.
+# cache writes at 1.25x input. Keyed by model id across providers; unknown ids
+# fall back to "n/a" so a gateway-served model never breaks cost reporting.
 PRICES_PER_MTOK: dict[str, tuple[float, float]] = {
     "claude-fable-5-1": (10.0, 50.0),
     "claude-opus-5": (5.0, 25.0),
     "claude-opus-4-8": (5.0, 25.0),
     "claude-sonnet-5": (2.0, 10.0),
     "claude-haiku-4-5": (1.0, 5.0),
+    "gpt-4o": (2.5, 10.0),
+    "gpt-4o-mini": (0.15, 0.6),
+    "gpt-4.1": (2.0, 8.0),
+    "o3": (2.0, 8.0),
+    "o4-mini": (1.1, 4.4),
 }
 
 

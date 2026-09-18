@@ -19,9 +19,19 @@ classifiers = [
     "Topic :: Software Development :: Code Generators",
     "Topic :: Utilities",
 ]
-dependencies = [
-    "anthropic>=1.0",
-]
+# The core carries no third-party runtime dependency: the agent loop, tool
+# system, permissions, memory, MCP client, and provider abstraction are pure
+# stdlib. Each model dialect is an optional extra that pulls in only its own
+# transport, so a build works with any model without dragging in the others.
+dependencies = []
+
+[project.optional-dependencies]
+# The Anthropic-dialect provider (the reference dialect). Install with
+# `tinyorbit[anthropic]` to talk to Claude; imported lazily on first use.
+anthropic = ["anthropic>=1.0"]
+# The OpenAI-dialect provider. Install with `tinyorbit[openai]` to reach any
+# OpenAI-compatible model or gateway.
+openai = ["openai>=1.0"]
 
 [project.urls]
 Homepage = "https://github.com/badlogicmanpreet/tinyorbit"
@@ -33,7 +43,9 @@ Changelog = "https://github.com/badlogicmanpreet/tinyorbit/blob/main/CHANGELOG.m
 tinyorbit = "main:main"
 
 [dependency-groups]
-dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.9"]
+# Dev installs the anthropic dialect so the default model works out of the box;
+# the openai transport stays opt-in and its tests importorskip.
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.9", "anthropic>=1.0"]
 
 [tool.ruff]
 line-length = 120

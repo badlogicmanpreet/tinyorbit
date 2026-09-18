@@ -2,7 +2,7 @@
 
 A from-scratch Python coding agent. It is real and runnable: you type a request, it calls the model, runs tools (read/write/edit/bash/glob/grep), and loops until the model stops asking for tools.
 
-Roughly 1,600 lines of code, one third-party dependency, and its own agent loop. Every non-obvious design choice has a comment pointing at the pattern it demonstrates. [notes.md](notes.md) is a guided walkthrough.
+Roughly 1,600 lines of code, no required third-party dependency (each model dialect is an optional extra), and its own agent loop. Every non-obvious design choice has a comment pointing at the pattern it demonstrates. [notes.md](notes.md) is a guided walkthrough.
 
 ## Does it work?
 
@@ -27,7 +27,7 @@ Three caveats matter more than the counts. Ten tasks is a small sample: 7/10 car
 ## Running
 
 ```bash
-uv sync --group dev                    # Python 3.11+, anthropic SDK
+uv sync --group dev                    # Python 3.11+, includes the anthropic dialect
 export ANTHROPIC_API_KEY=...           # or `ant auth login`
 
 uv run python main.py                              # interactive REPL
@@ -36,7 +36,7 @@ uv run python main.py --print "list the python files here"   # headless, streams
 uv run pytest                                      # 24 tests, no network
 ```
 
-Useful flags: `--model`, `--permission-mode {default,acceptEdits,bypassPermissions}`, `--allow 'Bash(git *)'`, `--effort xhigh`, `--max-turns 20`, `--no-fallbacks`, `--thinking-display summarized`. Inside the REPL: `/cost`, `/clear`, `/mode`, `/exit`. Ctrl+C mid-turn interrupts the turn; at the prompt it exits.
+Useful flags: `--model`, `--permission-mode {default,acceptEdits,bypassPermissions}`, `--allow 'Bash(git *)'`, `--allowed-tools 'Read,Grep'`, `--disallowed-tools 'Bash,mcp__*'`, `--effort xhigh`, `--max-turns 20`, `--no-fallbacks`, `--thinking-display summarized`, `--resume <id>` (with `--fork` to branch it). Inside the REPL: `/cost`, `/clear`, `/mode`, `/exit`. Ctrl+C mid-turn interrupts the turn; at the prompt it exits.
 
 Defaults: model `claude-opus-5`, adaptive thinking, server-side refusal fallback on, prompt caching on, permission mode `default` (read-only tools run freely, writes and shell commands prompt).
 
@@ -55,8 +55,9 @@ Defaults: model `claude-opus-5`, adaptive thinking, server-side refusal fallback
 | Concurrency         | `src/tinyorbit/tools/execute.py`  | consecutive concurrency-safe calls run under `asyncio.gather` |
 | Memory              | `src/tinyorbit/memory.py`         | TINYORBIT.md / AGENTS.md from home and every ancestor of cwd |
 | REPL / print mode   | `src/tinyorbit/repl.py`           | event rendering, Ctrl+C as abort signal, permission prompts |
+| Embedding seam      | `src/tinyorbit/runtime.py`        | drive the loop as a library: a persistent session, events to a caller's sink instead of the terminal |
 
-Not built yet (slots exist in `Config.capabilities`): sub-agents, hooks, MCP, the lighter context-management layers (snip/microcompact/collapse). Only auto-compact and reactive compact exist.
+Built and wired through `Config.capabilities`: sub-agents (a `Task` tool that runs a nested loop in a fresh context; opt-in via `.tinyorbit/agents/*.md`), skills (a `Skill` tool that pulls a named instruction bundle into context; opt-in via `.tinyorbit/skills/`), PreToolUse guard hooks (fail-closed allow/deny/pass policy checks that run before permissions; opt-in via `TINYORBIT_HOOKS` or set by an embedder), and MCP (opt-in via env). Not built yet: the lighter context-management layers (snip/microcompact/collapse). Only auto-compact and reactive compact exist.
 
 ## The loop in one screen
 

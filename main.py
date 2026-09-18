@@ -27,6 +27,8 @@ usage:
 
 flags:
   --model MODEL                  model id (default: claude-opus-5)
+  --provider NAME                model dialect: anthropic | openai | <registered>
+                                 (default: inferred from model / $TINYORBIT_PROVIDER)
   --cwd PATH                     working directory (default: current dir)
   --permission-mode MODE         default | acceptEdits | bypassPermissions
   --allow RULE                   pre-approve a tool, e.g. 'Bash(git status*)' (repeatable)

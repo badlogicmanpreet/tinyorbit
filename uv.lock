@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.12' and sys_platform == 'emscripten'",
@@ -217,6 +217,23 @@ wheels = [
 ]
 
 [[package]]
+name = "openai"
+version = "3.14.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "httpx2" },
+    { name = "jiter" },
+    { name = "pydantic" },
+    { name = "sniffio" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d0/88/472211fbaee888238d2e0657bcfdba5f64f3d38899dbfdada5e632a9758f/openai-3.14.0.tar.gz", hash = "sha256:714ba70b91ee1e78e75263694bebfeaca004432032685333a46d0e0206114bf9", size = 1635622, upload-time = "2026-09-14T23:29:10.961Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/77/e9/53504fbb21b2b765f77f972d34f86a80e5b98ec274b503a8e3d557df2aac/openai-3.14.0-py3-none-any.whl", hash = "sha256:232a85a1c0ff6820534630fbfdb99313990ed80e66f39892a3abcff4130e2b16", size = 2010880, upload-time = "2026-09-14T23:29:08.978Z" },
+]
+
+[[package]]
 name = "packaging"
 version = "26.3"
 source = { registry = "https://pypi.org/simple" }
@@ -427,22 +444,33 @@ wheels = [
 name = "tinyorbit"
 version = "0.1.0"
 source = { editable = "." }
-dependencies = [
+
+[package.optional-dependencies]
+anthropic = [
     { name = "anthropic" },
+]
+openai = [
+    { name = "openai" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "anthropic" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "anthropic", specifier = ">=1.0" }]
+requires-dist = [
+    { name = "anthropic", marker = "extra == 'anthropic'", specifier = ">=1.0" },
+    { name = "openai", marker = "extra == 'openai'", specifier = ">=1.0" },
+]
+provides-extras = ["anthropic", "openai"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "anthropic", specifier = ">=1.0" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
     { name = "ruff", specifier = ">=0.9" },

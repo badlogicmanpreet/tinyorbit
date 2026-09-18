@@ -67,11 +67,26 @@ async def run_tool(call: ToolCall, tools: list[Tool], ctx: ToolUseContext) -> di
     if error:
         return tool_result_block(call.id, f"Invalid input for {tool.name}: {error}", is_error=True)
 
-    decision = await ctx.permissions.can_use_tool(tool, call.input, ctx)
-    if decision.behavior != "allow":
-        return tool_result_block(
-            call.id, f"Permission denied for {tool.name}: {decision.reason}", is_error=True
-        )
+    # PreToolUse guard hooks (Ch 12) run before permissions: a deny blocks the
+    # call outright, an allow bypasses the permission prompt, a pass falls
+    # through. Empty in a plain run, so this is a no-op on the hot path.
+    hook_allow = False
+    if ctx.hooks:
+        from tinyorbit.hooks import run_pre_tool_use
+
+        outcome = await run_pre_tool_use(ctx.hooks, tool.name, call.input, ctx)
+        if outcome.decision == "deny":
+            return tool_result_block(
+                call.id, f"Blocked by policy for {tool.name}: {outcome.reason}", is_error=True
+            )
+        hook_allow = outcome.decision == "allow"
+
+    if not hook_allow:
+        decision = await ctx.permissions.can_use_tool(tool, call.input, ctx)
+        if decision.behavior != "allow":
+            return tool_result_block(
+                call.id, f"Permission denied for {tool.name}: {decision.reason}", is_error=True
+            )
 
     try:
         result = await tool.call(call.input, ctx)

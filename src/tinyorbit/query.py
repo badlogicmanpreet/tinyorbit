@@ -25,7 +25,7 @@ import asyncio
 from dataclasses import dataclass, field, replace
 from typing import Any, AsyncIterator, Awaitable, Callable
 
-from tinyorbit.api import (
+from tinyorbit.providers.base import (
     DEFAULT_MAX_TOKENS,
     ESCALATED_MAX_TOKENS,
     ModelCallError,
@@ -34,8 +34,8 @@ from tinyorbit.api import (
     StatusEvent,
     TextDelta,
     ThinkingDelta,
-    query_model,
 )
+from tinyorbit.providers.base import call_model as default_call_model
 from tinyorbit.state import CostTracker
 from tinyorbit.tools import (
     Tool,
@@ -93,7 +93,7 @@ class QueryParams:
     tools: list[Tool]
     ctx: ToolUseContext
     model: str
-    client: Any = None                    # anthropic.AsyncAnthropic; None under test
+    provider: Any = None                  # a Provider instance; None under test
     cost: CostTracker = field(default_factory=CostTracker)
     source: str = "repl"                  # 'repl' | 'print' | 'compact' | 'agent:<id>'
     max_turns: int | None = None
@@ -109,7 +109,7 @@ CompactFn = Callable[["QueryParams", list[Any]], Awaitable[list[Any]]]
 class QueryDeps:
     """The injection seam. Tests swap in a scripted model and a fake compactor."""
 
-    call_model: Callable[..., AsyncIterator[Any]] = query_model
+    call_model: Callable[..., AsyncIterator[Any]] = default_call_model
     compact: CompactFn | None = None
 
 
@@ -151,7 +151,7 @@ async def compact_messages(params: QueryParams, messages: list[Any]) -> list[Any
         fallbacks=params.fallbacks,
     )
     summary = ""
-    async for event in query_model(params.client, req, params.ctx.abort):
+    async for event in params.provider.stream(req, params.ctx.abort):
         if isinstance(event, ModelResponse):
             params.cost.add(event.message.usage)
             summary = "".join(b.text for b in event.message.content if b.type == "text")
@@ -218,7 +218,7 @@ async def query(params: QueryParams, deps: QueryDeps | None = None) -> AsyncIter
         )
         response = None
         try:
-            async for event in deps.call_model(params.client, req, ctx.abort):
+            async for event in deps.call_model(params.provider, req, ctx.abort):
                 if isinstance(event, ModelResponse):
                     response = event.message
                 else:

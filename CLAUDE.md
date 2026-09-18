@@ -13,7 +13,7 @@
   tests/                  # pytest, scripted model, no network
   bench/                  # SWE-bench Verified runner + frozen task sets, own venv
   reports/                # committed deliverables: HTML reports and the data they embed
-  pyproject.toml          # uv project, Python 3.11+, anthropic SDK
+  pyproject.toml          # uv project, Python 3.11+, optional per-dialect extras
   notes.md                # walkthrough notes on how tinyorbit works
   README.md               # tinyorbit readme
 ```
@@ -21,7 +21,7 @@
 ## Rules
 
 - Python 3.11+, `uv` for everything: `uv sync --group dev`, `uv run pytest`, `uv run python main.py`.
-- The only third-party dependency is the `anthropic` SDK, used as a transport. tinyorbit owns its own agent loop; do not switch to the SDK's tool runner.
+- The open-source core has no hard third-party dependency; each model dialect is an optional extra (`tinyorbit[anthropic]` is the reference transport, `[openai]` the other), imported lazily on first use so a build works with any model without dragging in the others. tinyorbit owns its own agent loop; do not switch to a vendor SDK's tool runner.
 - Do not describe tinyorbit as a clone or copy of any product in code, docstrings, or README.
 - Every non-obvious design choice gets a short comment naming the pattern it demonstrates.
 - Tests use the `QueryDeps` injection seam with a scripted model. Never add tests that need network.

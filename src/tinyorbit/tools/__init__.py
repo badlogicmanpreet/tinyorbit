@@ -8,7 +8,12 @@ from tinyorbit.tools.execute import (
     run_tool,
     tool_result_block,
 )
-from tinyorbit.tools.registry import assemble_tool_pool, find_tool, get_all_base_tools
+from tinyorbit.tools.registry import (
+    assemble_tool_pool,
+    find_tool,
+    get_all_base_tools,
+    select_tools,
+)
 
 __all__ = [
     "Tool",
@@ -22,5 +27,6 @@ __all__ = [
     "missing_tool_results",
     "partition_for_concurrency",
     "run_tool",
+    "select_tools",
     "tool_result_block",
 ]

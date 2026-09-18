@@ -45,6 +45,13 @@ class ToolUseContext:
     permissions: "PermissionPolicy"
     data_dir: Path
     file_state: dict[Path, float] = field(default_factory=dict)
+    # Set only when subagent dispatch is wired (a SubagentContext; Ch 8). None
+    # for plain tools and inside a subagent — kept as Any so base.py stays free
+    # of the agents import.
+    subagent: Any = None
+    # PreToolUse guard hooks (list[HookSpec]; Ch 12). Empty by default; run
+    # before the permission check. Any keeps base.py free of the hooks import.
+    hooks: list = field(default_factory=list)
 
     def resolve(self, raw: str) -> Path:
         path = Path(raw).expanduser()

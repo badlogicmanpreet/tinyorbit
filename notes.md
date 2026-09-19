@@ -157,7 +157,7 @@ Six, in `src/tinyorbit/tools/`, registered in fixed order (order is part of the 
 
 - **Bash's "depends".** A classifier splits the command on pipes and `&&` and calls it read-only only if every segment starts with a known reader and there is no redirect or `sudo`. That answer decides both whether permission is needed and whether it may run in parallel.
 - **Output is capped everywhere.** Read pages, Glob/Grep stop at 200 hits, any result over 30,000 characters is saved to disk and replaced with a preview plus the path.
-- **Added beyond the six** (opt-in, zero cost when unused): a `Task` tool that dispatches a sub-agent — the same loop run in a fresh context with its own prompt and a narrower tool pool, appearing only when `.tinyorbit/agents/*.md` defines one (ch 8); and MCP tools when env opts in (ch 15).
+- **Added beyond the six** (opt-in, zero cost when unused): a `Task` tool that dispatches a sub-agent, the same loop run in a fresh context with its own prompt and a narrower tool pool, appearing only when `.tinyorbit/agents/*.md` defines one (ch 8); and MCP tools when env opts in (ch 15).
 - **Still missing** versus fuller agents: web fetch, todo list, LSP diagnostics, patch tool. Reserved for later chapters.
 
 ---

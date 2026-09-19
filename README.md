@@ -1,10 +1,12 @@
-# tinyorbit — A Tiny Harness for Building Agents
+# <img src="assets/logo.svg" alt="tinyorbit logo" height="34" valign="middle"> tinyorbit
 
-**tinyorbit is an agent harness: the loop, tools, system prompt, and permissions — everything an agent needs except the model. Harness + model = agent.** It ships as a small, from-scratch Python coding agent so the harness is real and runnable, not a diagram: you type a request, it calls the model, runs tools (read/write/edit/bash/glob/grep), and loops until the model stops asking for tools.
+**A tiny harness for building agents.**
+
+tinyorbit is an agent harness. It is the loop, tools, system prompt, and permissions: everything an agent needs except the model. Harness + model = agent. It ships as a small, from-scratch Python coding agent so the harness is real and runnable rather than a diagram. You type a request, it calls the model, runs tools (read/write/edit/bash/glob/grep), and loops until the model stops asking for tools.
 
 The pieces you'd build a different agent from are all seams you can swap: a **provider** layer so any model dialect plugs in (Anthropic and OpenAI ship; a gateway self-registers), an opt-in **tool pool** (sub-agents, skills, MCP servers, hooks), a **permission** chain, and a **Runtime** embedding seam that drives the same loop as a library instead of a terminal.
 
-Roughly 1,600 lines of core code, no required third-party dependency (each model dialect is an optional extra), and its own agent loop — it never hands control to a vendor SDK's tool runner. Every non-obvious design choice has a comment pointing at the pattern it demonstrates. [notes.md](notes.md) is a guided walkthrough; the [Architecture](#architecture) section below has the whole picture in one diagram.
+Roughly 1,600 lines of core code, no required third-party dependency (each model dialect is an optional extra), and its own agent loop that never hands control to a vendor SDK's tool runner. Every non-obvious design choice has a comment pointing at the pattern it demonstrates. [notes.md](notes.md) is a guided walkthrough; the [Architecture](#architecture) section below has the whole picture in one diagram.
 
 ## Does it work?
 
@@ -15,16 +17,16 @@ It was run against [SWE-bench Verified](https://www.swebench.com/verified.html) 
 | Seed 42, ten of the 500 | 10 | **10 / 10** | $3.39 | 25 min |
 | Hard tail, stratified by repo | 10 | **7 / 10** | $10.23 | 53 min |
 
-Both runs used `claude-opus-5` at default effort with a 60-turn cap, one container per task, no retries and a single attempt each. The hard sample was drawn from the 45 instances rated 1–4 hours or more, stratified by repository so Django could not dominate.
+Both runs used `claude-opus-5` at default effort with a 60-turn cap, one container per task, no retries and a single attempt each. The hard sample was drawn from the 45 instances rated 1 to 4 hours or more, stratified by repository so Django could not dominate.
 
 The same twenty instances were then scored against 19 published leaderboard submissions. On the hard ten the strongest of them resolves 5, and the bash-only mini-SWE-agent reference resolves 2. Every published entry runs a model at least one generation older, so read that gap as model-plus-harness, not as a harness ranking.
 
-Three caveats matter more than the counts. Ten tasks is a small sample: 7/10 carries a 95% interval of roughly 35–93%. Frontier models are known to reproduce some Verified gold patches verbatim, so *resolved* does not always mean *reasoned*. And all three misses share one cause: the agent declared success after passing tests it had written itself, rather than deriving a failing reproduction from the issue text first.
+Three caveats matter more than the counts. Ten tasks is a small sample: 7/10 carries a 95% interval of roughly 35% to 93%. Frontier models are known to reproduce some Verified gold patches verbatim, so *resolved* does not always mean *reasoned*. And all three misses share one cause: the agent declared success after passing tests it had written itself, rather than deriving a failing reproduction from the issue text first.
 
 [reports/](reports/) holds the full write-ups, both self-contained HTML:
 
-- `swe-bench-report.html` — per-task verdicts, cost and turn behaviour, an analysis of the three misses, and the task-level comparison against published harnesses.
-- `agent-loop-trace.html` — one task traced at the wire and replayed: every stream event across 19 model calls, where adaptive thinking fired and what the socket was doing during it, and how history and the prompt cache behave between turns.
+- `swe-bench-report.html`: per-task verdicts, cost and turn behaviour, an analysis of the three misses, and the task-level comparison against published harnesses.
+- `agent-loop-trace.html`: one task traced at the wire and replayed. Every stream event across 19 model calls, where adaptive thinking fired and what the socket was doing during it, and how history and the prompt cache behave between turns.
 
 ## Running
 
@@ -44,7 +46,7 @@ Defaults: model `claude-opus-5`, adaptive thinking, server-side refusal fallback
 
 ## Architecture
 
-Config and params flow **down**; events stream **up**. Only the model is remote — files, edits, shell, and permissions stay local. Bootstrap builds an immutable `Config` once, a consumer (REPL, `--print`, or the embedding `Runtime`) drives the outer loop one turn per message, and the inner loop in `query.py` runs one cycle per model call until the model stops asking for tools.
+Config and params flow **down**; events stream **up**. Only the model is remote; files, edits, shell, and permissions stay local. Bootstrap builds an immutable `Config` once, a consumer (REPL, `--print`, or the embedding `Runtime`) drives the outer loop one turn per message, and the inner loop in `query.py` runs one cycle per model call until the model stops asking for tools.
 
 ```mermaid
 flowchart TB
@@ -55,13 +57,13 @@ flowchart TB
 
   U(["User request"]) --> RT
 
-  subgraph OUTER["Outer loop — run_turn, once per message"]
+  subgraph OUTER["Outer loop: run_turn, once per message"]
     RT["Consumer: REPL / --print / Runtime<br/>append message, build QueryParams, render events"]:::harness
   end
 
   RT --> COMPACT
 
-  subgraph INNER["Inner loop — query.py, once per model call"]
+  subgraph INNER["Inner loop: query.py, once per model call"]
     direction TB
     COMPACT["1 · Context pipeline<br/>compact history if over ~150k tokens"]:::harness
     CALL["2 · Call model, streaming<br/>TextDelta · ThinkingDelta · ModelResponse"]:::model
@@ -73,18 +75,18 @@ flowchart TB
   end
 
   DECIDE -->|end_turn| DONE(["Done(completed)"])
-  DECIDE -->|refusal · max_turns · error| STOP(["Done(...) — named exit"])
+  DECIDE -->|refusal · max_turns · error| STOP(["Done(...) named exit"])
   class DONE tool
   class STOP model
 
   CALL <-->|neutral ModelRequest / event stream| PROV
   EXEC --> PIPE
 
-  subgraph SEAM["Provider seam — providers/"]
+  subgraph SEAM["Provider seam: providers/"]
     PROV["resolve_provider()<br/>anthropic · openai · opt-in gateway self-registers"]:::model
   end
 
-  subgraph TOOLS["Tool execution — tools/execute.py · permissions.py"]
+  subgraph TOOLS["Tool execution: tools/execute.py · permissions.py"]
     direction TB
     PIPE["run_tool: find, validate, hooks,<br/>permission, call, budget"]:::tool
     PERM["permission chain:<br/>bypass, allow rules, read-only, acceptEdits, ask"]:::state
@@ -92,7 +94,7 @@ flowchart TB
   end
 ```
 
-The full, annotated version — every named loop exit, the trust boundary, the six tools plus opt-in slots, and the capability subsystems — is a self-contained page: **[reports/architecture.html](reports/architecture.html)**.
+The full, annotated version (every named loop exit, the trust boundary, the six tools plus opt-in slots, and the capability subsystems) is a self-contained page: **[reports/architecture.html](reports/architecture.html)**.
 
 ## The abstractions (mapped to modules)
 
@@ -165,7 +167,7 @@ cd bench
 
 Per task it pulls the instance image, copies tinyorbit in, installs it with uv, runs `main.py --print` with the issue as the prompt, captures the transcript and the full message history, takes `git diff` from `/testbed`, and appends a prediction line. Other flags: `--only ID`, `--dry-run`, `--keep`, `--trace`, `--thinking-display`, `--model`, `--effort`, `--max-turns`.
 
-Three frozen task sets ship here so runs are reproducible: `tasks-easy10.json` (seed 42, also the default `tasks.json`), `tasks-hard10.json` (the 1–4 h and >4 h tail, stratified by repository), and `tasks-five.json` (an earlier sample, kept for provenance). Run outputs — transcripts, patches, predictions, scoring — stay untracked under `bench/logs/<run-id>/`. See the last section of [notes.md](notes.md) for the method and for what to look for in a failure.
+Three frozen task sets ship here so runs are reproducible: `tasks-easy10.json` (seed 42, also the default `tasks.json`), `tasks-hard10.json` (the 1 to 4 h and >4 h tail, stratified by repository), and `tasks-five.json` (an earlier sample, kept for provenance). Run outputs (transcripts, patches, predictions, scoring) stay untracked under `bench/logs/<run-id>/`. See the last section of [notes.md](notes.md) for the method and for what to look for in a failure.
 
 ## Layout
 

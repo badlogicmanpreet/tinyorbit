@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="tinyorbit logo">
+  <title>tinyorbit</title>
+  <!-- orbit ring: the loop -->
+  <ellipse cx="32" cy="32" rx="26" ry="11.5" fill="none" stroke="#2a78d6" stroke-width="2.6" transform="rotate(-28 32 32)"/>
+  <!-- core: the model -->
+  <circle cx="32" cy="32" r="7.5" fill="#eb6834"/>
+  <!-- satellite riding the orbit: a tool call -->
+  <circle cx="48" cy="16" r="4.4" fill="#1baf7a"/>
+</svg>

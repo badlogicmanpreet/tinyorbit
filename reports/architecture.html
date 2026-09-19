@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>tinyorbit — architecture</title>
+<title>tinyorbit architecture</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@600;700;900&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap">
@@ -193,7 +193,7 @@ footer code{font-size:11.5px}
   <p class="sub">A small terminal coding agent in Python (~6.5k LOC). You type a request; it calls a
   model over HTTPS; the model asks for tools; tinyorbit runs them locally and sends the results back,
   repeating until the model stops asking. <b>Config &amp; params flow down; events stream up.</b>
-  Only the model is remote — files, edits, shell, and permissions stay local.</p>
+  Only the model is remote: files, edits, shell, and permissions stay local.</p>
 
   <div class="legend">
     <b>Concern:</b>
@@ -206,7 +206,7 @@ footer code{font-size:11.5px}
 
 <!-- ── BOOTSTRAP ─────────────────────────────────────────────── -->
 <section class="band">
-  <span class="lbl">1 · Bootstrap — startup, once</span>
+  <span class="lbl">1 · Bootstrap: startup, once</span>
   <p class="cap">Each phase narrows scope until every decision is made.
     <span class="mono">main.py → bootstrap.py</span></p>
   <div class="row">
@@ -214,14 +214,14 @@ footer code{font-size:11.5px}
     <div class="box h"><h4>setup(config)</h4><p>Fill <code>config.capabilities</code>: tool pool, memory, system prompt, and the opt-in slots (hooks, agents, skills, mcp_servers).<span class="file mono">bootstrap.setup()</span></p></div>
     <div class="box h"><h4>launch(config)</h4><p>Pick a mode: <code>run_print_mode</code> (headless / bench) or <code>run_interactive</code> (REPL). Both converge on <code>run_turn</code>.<span class="file mono">bootstrap.launch()</span></p></div>
   </div>
-  <div class="trust">trust boundary — above: only argv is read · below: with trust, project files &amp; memory load</div>
+  <div class="trust">trust boundary · above: only argv is read · below: with trust, project files &amp; memory load</div>
 </section>
 
 <div class="arrow-down">↓ Config</div>
 
 <!-- ── CONSUMERS / RENDERERS ─────────────────────────────────── -->
 <section class="band">
-  <span class="lbl">2 · Consumers — who drives the loop &amp; renders events</span>
+  <span class="lbl">2 · Consumers: who drives the loop &amp; renders events</span>
   <p class="cap">The loop yields events; a consumer is just a renderer. All are interface-agnostic below <code>run_turn</code>.</p>
   <div class="row">
     <div class="box h"><h4>REPL (interactive)</h4><p>Read-Eval-Print-Loop with Eval = the agent loop. Synchronous, line-oriented; an ANSI <code>Renderer</code> is the entire "print" step. Terminal <code>ask()</code> answers permission prompts.<span class="file mono">repl.py · run_interactive</span></p></div>
@@ -235,7 +235,7 @@ footer code{font-size:11.5px}
 
 <!-- ── INNER LOOP ────────────────────────────────────────────── -->
 <section class="band loop">
-  <span class="lbl">3 · The inner loop — once per model call · query.py</span>
+  <span class="lbl">3 · The inner loop: once per model call · query.py</span>
   <p class="cap">An async generator: <code>while True</code> → maybe compact → call model → tools? → execute → rebuild <code>LoopState</code>. Every <code>continue</code> site rebuilds the whole state so each transition is explicit.</p>
 
   <div class="cycle">
@@ -273,7 +273,7 @@ footer code{font-size:11.5px}
   </div>
 
   <div class="exits">
-    <h5>Named exits &amp; recovery branches — every way the happy path breaks</h5>
+    <h5>Named exits &amp; recovery branches: every way the happy path breaks</h5>
     <div class="exitgrid">
       <div class="exit done"><b>completed</b><span>no tool calls, <code>end_turn</code>.</span></div>
       <div class="exit stop"><b>refusal</b><span>model declined; category surfaced.</span></div>
@@ -286,7 +286,7 @@ footer code{font-size:11.5px}
       <div class="exit stop"><b>model_error</b><span>unrecoverable transport error.</span></div>
     </div>
   </div>
-  <div class="note"><b>Injection seam:</b> <code>QueryDeps.call_model</code> &amp; <code>.compact</code> default to the real provider; tests swap in a scripted model &amp; fake compactor — no network.</div>
+  <div class="note"><b>Injection seam:</b> <code>QueryDeps.call_model</code> &amp; <code>.compact</code> default to the real provider; tests swap in a scripted model &amp; fake compactor: no network.</div>
 </section>
 
 <div class="row" style="gap:16px;margin:6px 0 16px">
@@ -297,7 +297,7 @@ footer code{font-size:11.5px}
 <div class="split">
   <!-- ── PROVIDER / TRANSPORT ─────────────────────────────────── -->
   <section class="band">
-    <span class="lbl">4 · Provider seam — model transport</span>
+    <span class="lbl">4 · Provider seam: model transport</span>
     <p class="cap">The loop never imports a vendor SDK. It hands a neutral <code>ModelRequest</code> to <code>provider.stream()</code> and consumes a neutral event stream. <span class="mono">providers/</span></p>
     <div class="row" style="margin-bottom:10px">
       <div class="box m plain" style="flex:1 1 100%">
@@ -307,11 +307,11 @@ footer code{font-size:11.5px}
     </div>
     <div class="note" style="margin:0 0 12px">Two orthogonal axes: <b>dialect</b> = wire format (Anthropic Messages · OpenAI Chat) · <b>transport</b> = endpoint + auth (first-party · Bedrock · gateway). <code>ProviderCapabilities</code> gates features so missing ones degrade, never error.</div>
     <div class="row">
-      <div class="box m"><h4>anthropic</h4><p>Reference transport. SDK used only for SSE parsing, creds, typed errors — not its loop.<span class="file mono">providers/anthropic.py</span></p></div>
+      <div class="box m"><h4>anthropic</h4><p>Reference transport. SDK used only for SSE parsing, creds, typed errors: not its loop.<span class="file mono">providers/anthropic.py</span></p></div>
       <div class="box m"><h4>openai</h4><p>Chat dialect → canonical blocks via <code>NormalizedMessage</code>.<span class="file mono">providers/openai.py</span></p></div>
     </div>
     <div class="row" style="margin-top:12px">
-      <div class="box m plain" style="flex:1 1 100%"><h4>bring-your-own ▸</h4><p>A custom transport — a self-hosted LLM gateway, a Bedrock-invoke endpoint, a new wire dialect — drops in as <code>providers/&lt;name&gt;.py</code> and self-registers on first lookup. The loop, tools, and permissions never change.<span class="file mono">providers/base.py · Provider</span></p></div>
+      <div class="box m plain" style="flex:1 1 100%"><h4>bring-your-own ▸</h4><p>A custom transport (a self-hosted LLM gateway, a Bedrock-invoke endpoint, a new wire dialect) drops in as <code>providers/&lt;name&gt;.py</code> and self-registers on first lookup. The loop, tools, and permissions never change.<span class="file mono">providers/base.py · Provider</span></p></div>
     </div>
   </section>
 
@@ -329,7 +329,7 @@ footer code{font-size:11.5px}
       <span class="p run">tool.call</span><span class="arr">→</span>
       <span class="p">budget (30k)</span>
     </div>
-    <div class="kicker" style="margin:16px 0 4px">permission chain — ask is the last resort</div>
+    <div class="kicker" style="margin:16px 0 4px">permission chain: ask is the last resort</div>
     <div class="chain">
       <span class="step"><b>bypass</b> mode</span><span class="sep">→</span>
       <span class="step">explicit <b>allow rules</b></span><span class="sep">→</span>
@@ -345,7 +345,7 @@ footer code{font-size:11.5px}
 
 <!-- ── TOOLS ─────────────────────────────────────────────────── -->
 <section class="band">
-  <span class="lbl">6 · Tools — the six + opt-in</span>
+  <span class="lbl">6 · Tools: the six + opt-in</span>
   <p class="cap">Registered in fixed order (order is part of the cached prompt prefix). <span class="mono">tools/</span></p>
   <div class="tools">
     <div class="tcell"><h4>Read</h4><p>Numbered lines, 2000/page; records mtime in the staleness ledger.</p><span class="tag ro">read-only</span> <span class="tag par">parallel</span></div>
@@ -362,7 +362,7 @@ footer code{font-size:11.5px}
 
 <!-- ── CAPABILITIES / STATE ──────────────────────────────────── -->
 <section class="band">
-  <span class="lbl">7 · Capabilities &amp; state — opt-in subsystems, zero cost when off</span>
+  <span class="lbl">7 · Capabilities &amp; state: opt-in subsystems, zero cost when off</span>
   <p class="cap">Discovered from <code>.tinyorbit/</code> at <code>setup()</code>; empty in a plain repo, so the default tool count and prompt cache are untouched.</p>
   <div class="row">
     <div class="box s"><h4>Memory</h4><p>Instruction files (root → cwd) folded into the system prompt.<span class="file mono">memory.py</span></p></div>
@@ -373,10 +373,10 @@ footer code{font-size:11.5px}
   <div class="row" style="margin-top:12px">
     <div class="box s"><h4>MCP client</h4><p>Discover, connect, and list external tool servers (async startup).<span class="file mono">mcp/</span></p></div>
     <div class="box s"><h4>Sessions</h4><p>Resume a saved id (append) or fork it (new id, original intact); JSONL on disk.<span class="file mono">sessions.py</span></p></div>
-    <div class="box s"><h4>SessionState</h4><p>Messages, turn count, session id — the conversation across turns.<span class="file mono">state.py</span></p></div>
+    <div class="box s"><h4>SessionState</h4><p>Messages, turn count, session id: the conversation across turns.<span class="file mono">state.py</span></p></div>
     <div class="box s"><h4>CostTracker</h4><p>Token usage, last-context tokens (drives compaction), USD estimate.<span class="file mono">state.py</span></p></div>
   </div>
-  <div class="note">Cross-cutting &amp; free when unused: prompt caching, extended thinking, and observability — <code>TINYORBIT_TRACE=&lt;path&gt;</code> appends one JSON line per stream event; <code>--thinking-display summarized</code> surfaces reasoning. Defaults keep benchmark runs comparable.</div>
+  <div class="note">Cross-cutting &amp; free when unused: prompt caching, extended thinking, and observability: <code>TINYORBIT_TRACE=&lt;path&gt;</code> appends one JSON line per stream event; <code>--thinking-display summarized</code> surfaces reasoning. Defaults keep benchmark runs comparable.</div>
 </section>
 
 <hr class="hr">
@@ -390,19 +390,19 @@ footer code{font-size:11.5px}
   </p>
   <div class="kicker" style="margin-top:22px">File map</div>
   <div class="fmap mono">
-    <div><code>main.py</code> — CLI entry</div>
-    <div><code>bootstrap.py</code> — init · setup · launch · Config</div>
-    <div><code>repl.py</code> — REPL, print mode, Renderer, run_turn</div>
-    <div><code>runtime.py</code> — embedding seam (Runtime)</div>
-    <div><code>query.py</code> — the inner loop &amp; LoopState</div>
-    <div><code>providers/base.py</code> — Provider contract, registry, capabilities</div>
-    <div><code>providers/{anthropic,openai}.py</code> — dialects</div>
-    <div><code>tools/execute.py</code> — run_tool pipeline, concurrency</div>
-    <div><code>tools/{file,bash,search}_tools.py</code> — the six</div>
-    <div><code>permissions.py</code> — the resolution chain</div>
-    <div><code>state.py</code> — SessionState · CostTracker</div>
-    <div><code>agents.py · skills.py · hooks.py · memory.py · sessions.py</code> — opt-in</div>
-    <div><code>mcp/</code> — external tool servers</div>
+    <div><code>main.py</code>: CLI entry</div>
+    <div><code>bootstrap.py</code>: init · setup · launch · Config</div>
+    <div><code>repl.py</code>: REPL, print mode, Renderer, run_turn</div>
+    <div><code>runtime.py</code>: embedding seam (Runtime)</div>
+    <div><code>query.py</code>: the inner loop &amp; LoopState</div>
+    <div><code>providers/base.py</code>: Provider contract, registry, capabilities</div>
+    <div><code>providers/{anthropic,openai}.py</code>: dialects</div>
+    <div><code>tools/execute.py</code>: run_tool pipeline, concurrency</div>
+    <div><code>tools/{file,bash,search}_tools.py</code>: the six</div>
+    <div><code>permissions.py</code>: the resolution chain</div>
+    <div><code>state.py</code>: SessionState · CostTracker</div>
+    <div><code>agents.py · skills.py · hooks.py · memory.py · sessions.py</code>: opt-in</div>
+    <div><code>mcp/</code>: external tool servers</div>
   </div>
   <p style="margin-top:20px;color:var(--ink-3)">tinyorbit is an <b>agent harness</b>: the loop, tools, prompt, and permissions minus the model. Harness + model = agent. Generated from source; see <code>notes.md</code> for the narrative walkthrough.</p>
 </footer>

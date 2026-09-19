@@ -1,8 +1,10 @@
-# tinyorbit — A Small Terminal Coding Agent in Python
+# tinyorbit — A Tiny Harness for Building Agents
 
-A from-scratch Python coding agent. It is real and runnable: you type a request, it calls the model, runs tools (read/write/edit/bash/glob/grep), and loops until the model stops asking for tools.
+**tinyorbit is an agent harness: the loop, tools, system prompt, and permissions — everything an agent needs except the model. Harness + model = agent.** It ships as a small, from-scratch Python coding agent so the harness is real and runnable, not a diagram: you type a request, it calls the model, runs tools (read/write/edit/bash/glob/grep), and loops until the model stops asking for tools.
 
-Roughly 1,600 lines of code, no required third-party dependency (each model dialect is an optional extra), and its own agent loop. Every non-obvious design choice has a comment pointing at the pattern it demonstrates. [notes.md](notes.md) is a guided walkthrough.
+The pieces you'd build a different agent from are all seams you can swap: a **provider** layer so any model dialect plugs in (Anthropic and OpenAI ship; a gateway self-registers), an opt-in **tool pool** (sub-agents, skills, MCP servers, hooks), a **permission** chain, and a **Runtime** embedding seam that drives the same loop as a library instead of a terminal.
+
+Roughly 1,600 lines of core code, no required third-party dependency (each model dialect is an optional extra), and its own agent loop — it never hands control to a vendor SDK's tool runner. Every non-obvious design choice has a comment pointing at the pattern it demonstrates. [notes.md](notes.md) is a guided walkthrough; the [Architecture](#architecture) section below has the whole picture in one diagram.
 
 ## Does it work?
 
@@ -33,12 +35,64 @@ export ANTHROPIC_API_KEY=...           # or `ant auth login`
 uv run python main.py                              # interactive REPL
 uv run python main.py "explain the bootstrap"      # REPL with a first prompt
 uv run python main.py --print "list the python files here"   # headless, streams to stdout
-uv run pytest                                      # 24 tests, no network
+uv run pytest                                      # 124 tests, no network
 ```
 
 Useful flags: `--model`, `--permission-mode {default,acceptEdits,bypassPermissions}`, `--allow 'Bash(git *)'`, `--allowed-tools 'Read,Grep'`, `--disallowed-tools 'Bash,mcp__*'`, `--effort xhigh`, `--max-turns 20`, `--no-fallbacks`, `--thinking-display summarized`, `--resume <id>` (with `--fork` to branch it). Inside the REPL: `/cost`, `/clear`, `/mode`, `/exit`. Ctrl+C mid-turn interrupts the turn; at the prompt it exits.
 
 Defaults: model `claude-opus-5`, adaptive thinking, server-side refusal fallback on, prompt caching on, permission mode `default` (read-only tools run freely, writes and shell commands prompt).
+
+## Architecture
+
+Config and params flow **down**; events stream **up**. Only the model is remote — files, edits, shell, and permissions stay local. Bootstrap builds an immutable `Config` once, a consumer (REPL, `--print`, or the embedding `Runtime`) drives the outer loop one turn per message, and the inner loop in `query.py` runs one cycle per model call until the model stops asking for tools.
+
+```mermaid
+flowchart TB
+  classDef harness fill:#dde9fa,stroke:#2a78d6,color:#1c5cab;
+  classDef model fill:#fbe6dc,stroke:#eb6834,color:#b04a1f;
+  classDef tool fill:#d9f2e8,stroke:#1baf7a,color:#117853;
+  classDef state fill:#ece3fb,stroke:#8156d6,color:#5f3bad;
+
+  U(["User request"]) --> RT
+
+  subgraph OUTER["Outer loop — run_turn, once per message"]
+    RT["Consumer: REPL / --print / Runtime<br/>append message, build QueryParams, render events"]:::harness
+  end
+
+  RT --> COMPACT
+
+  subgraph INNER["Inner loop — query.py, once per model call"]
+    direction TB
+    COMPACT["1 · Context pipeline<br/>compact history if over ~150k tokens"]:::harness
+    CALL["2 · Call model, streaming<br/>TextDelta · ThinkingDelta · ModelResponse"]:::model
+    DECIDE{"stop_reason?"}:::harness
+    EXEC["3 · Execute tools<br/>concurrency-safe groups via asyncio.gather"]:::tool
+    REBUILD["4 · Rebuild LoopState<br/>append tool_result, transition = next_turn"]:::harness
+    COMPACT --> CALL --> DECIDE
+    DECIDE -->|tool_use| EXEC --> REBUILD --> COMPACT
+  end
+
+  DECIDE -->|end_turn| DONE(["Done(completed)"])
+  DECIDE -->|refusal · max_turns · error| STOP(["Done(...) — named exit"])
+  class DONE tool
+  class STOP model
+
+  CALL <-->|neutral ModelRequest / event stream| PROV
+  EXEC --> PIPE
+
+  subgraph SEAM["Provider seam — providers/"]
+    PROV["resolve_provider()<br/>anthropic · openai · opt-in gateway self-registers"]:::model
+  end
+
+  subgraph TOOLS["Tool execution — tools/execute.py · permissions.py"]
+    direction TB
+    PIPE["run_tool: find, validate, hooks,<br/>permission, call, budget"]:::tool
+    PERM["permission chain:<br/>bypass, allow rules, read-only, acceptEdits, ask"]:::state
+    PIPE --> PERM
+  end
+```
+
+The full, annotated version — every named loop exit, the trust boundary, the six tools plus opt-in slots, and the capability subsystems — is a self-contained page: **[reports/architecture.html](reports/architecture.html)**.
 
 ## The abstractions (mapped to modules)
 
@@ -118,21 +172,25 @@ Three frozen task sets ship here so runs are reproducible: `tasks-easy10.json` (
 ```
 .
   main.py                  # CLI entry (phase 0 fast path → bootstrap)
-  pyproject.toml           # uv project; `anthropic>=1.0`
+  pyproject.toml           # uv project; core has no required dep, each dialect is an optional extra
   src/tinyorbit/
     bootstrap.py  api.py  query.py  state.py  prompt.py  memory.py  permissions.py  repl.py
+    runtime.py             # embedding seam: drive the loop as a library
+    providers/             # model transport seam
+      base.py              # Provider contract, registry, capabilities
+      anthropic.py  openai.py   # the shipped dialects
     tools/
       base.py              # Tool, ToolResult, ToolUseContext, schema check
       file_tools.py        # Read, Write, Edit
       bash_tool.py         # Bash + read-only classifier
       search_tools.py      # Glob, Grep
       execute.py           # the pipeline, concurrency partition, orphan safety net
-      registry.py
-  tests/
-    test_query.py          # loop behaviour with a scripted model
-    test_tools.py          # tools, permissions, budgeting
+      registry.py  task_tool.py  skill_tool.py
+    agents.py  skills.py  hooks.py  sessions.py   # opt-in subsystems
+    mcp/                   # external MCP tool servers (opt-in)
+  tests/                   # scripted-model loop tests + tool/provider/subsystem tests, no network
   bench/                   # SWE-bench runner: run.py, prompt.txt, frozen task sets
-  reports/                 # HTML write-ups of the benchmark runs, and their data
+  reports/                 # architecture.html + HTML write-ups of the benchmark runs, and their data
 ```
 
 ## Contributing

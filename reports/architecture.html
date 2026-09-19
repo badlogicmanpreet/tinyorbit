@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tinyorbit — architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@600;700;900&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+:root{
+  color-scheme:light;
+  --bg:#f4f6f9; --panel:#ffffff; --panel-2:#eaeef4; --panel-3:#dde3ec;
+  --line:#ccd4e0; --line-2:#adb8c8;
+  --ink:#111721; --ink-2:#495468; --ink-3:#78849a;
+  --harness:#2a78d6; --harness-ink:#1c5cab; --harness-soft:#dde9fa;
+  --model:#eb6834; --model-ink:#b04a1f; --model-soft:#fbe6dc;
+  --tool:#1baf7a; --tool-ink:#117853; --tool-soft:#d9f2e8;
+  --state:#8156d6; --state-ink:#5f3bad; --state-soft:#ece3fb;
+  --wire:#8f9cb0;
+  --ok:#1b7f3b; --warn:#b8770a; --err:#c0392b;
+  --shadow:0 1px 2px rgba(17,23,33,.06),0 8px 24px -12px rgba(17,23,33,.18);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#141922; --panel:#1b212c; --panel-2:#222936; --panel-3:#2b3341;
+    --line:#323b4a; --line-2:#465264;
+    --ink:#e9edf3; --ink-2:#a9b4c4; --ink-3:#7b8698;
+    --harness:#3987e5; --harness-ink:#86b6ef; --harness-soft:#16253a;
+    --model:#d95926; --model-ink:#f0916a; --model-soft:#331c12;
+    --tool:#199e70; --tool-ink:#5cc9a3; --tool-soft:#11302a;
+    --state:#9a72e8; --state-ink:#c4abf3; --state-soft:#221733;
+    --wire:#5d6a7e;
+    --ok:#4fbf6f; --warn:#e0a03a; --err:#e5715f;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.7);
+  }
+}
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Source Sans 3",system-ui,-apple-system,Segoe UI,sans-serif;
+  line-height:1.5;-webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1160px;margin:0 auto;padding:40px 24px 80px}
+header.top{margin-bottom:14px}
+h1{font-family:Chivo,sans-serif;font-weight:900;font-size:34px;letter-spacing:-.01em;margin:0 0 6px}
+.sub{color:var(--ink-2);font-size:16px;max-width:70ch}
+.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace}
+code{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:.86em;
+  background:var(--panel-2);padding:1px 5px;border-radius:5px;color:var(--ink)}
+
+/* legend */
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;margin:18px 0 26px;align-items:center;
+  font-size:13px;color:var(--ink-2)}
+.legend b{color:var(--ink)}
+.chip{display:inline-flex;align-items:center;gap:7px;font-weight:600;font-size:12.5px;
+  padding:3px 10px;border-radius:20px;border:1px solid transparent}
+.chip .dot{width:10px;height:10px;border-radius:50%}
+.chip.harness{background:var(--harness-soft);color:var(--harness-ink);border-color:var(--harness)}
+.chip.harness .dot{background:var(--harness)}
+.chip.model{background:var(--model-soft);color:var(--model-ink);border-color:var(--model)}
+.chip.model .dot{background:var(--model)}
+.chip.tool{background:var(--tool-soft);color:var(--tool-ink);border-color:var(--tool)}
+.chip.tool .dot{background:var(--tool)}
+.chip.state{background:var(--state-soft);color:var(--state-ink);border-color:var(--state)}
+.chip.state .dot{background:var(--state)}
+
+/* bands */
+.band{position:relative;background:var(--panel);border:1px solid var(--line);
+  border-radius:16px;padding:20px 22px 22px;margin:0 0 16px;box-shadow:var(--shadow)}
+.band > .lbl{position:absolute;top:-11px;left:18px;background:var(--panel);
+  border:1px solid var(--line);border-radius:20px;padding:2px 12px;font-size:11.5px;
+  font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3)}
+.band .cap{font-size:13.5px;color:var(--ink-2);margin:2px 0 16px}
+.band .cap .mono{font-size:12.5px;color:var(--ink-3)}
+
+.flowdown{display:flex;justify-content:center;margin:-4px 0 6px}
+.flowdown span{font-size:12px;color:var(--ink-3);display:inline-flex;align-items:center;gap:8px}
+.flowdown span::before,.flowdown span::after{content:"";width:44px;height:1px;background:var(--line-2)}
+
+/* generic box */
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:stretch}
+.row.center{justify-content:center}
+.box{flex:1 1 0;min-width:150px;background:var(--panel-2);border:1px solid var(--line);
+  border-radius:11px;padding:12px 13px}
+.box h4{margin:0 0 5px;font-family:Chivo,sans-serif;font-weight:700;font-size:14.5px}
+.box p{margin:0;font-size:12.7px;color:var(--ink-2)}
+.box .file{display:block;margin-top:7px;font-size:11px;color:var(--ink-3)}
+.box.h{border-color:var(--harness);background:var(--harness-soft)}
+.box.h h4{color:var(--harness-ink)}
+.box.m{border-color:var(--model);background:var(--model-soft)}
+.box.m h4{color:var(--model-ink)}
+.box.t{border-color:var(--tool);background:var(--tool-soft)}
+.box.t h4{color:var(--tool-ink)}
+.box.s{border-color:var(--state);background:var(--state-soft)}
+.box.s h4{color:var(--state-ink)}
+.box.plain{background:var(--panel);}
+
+.arrow-down{display:block;text-align:center;color:var(--wire);font-size:20px;line-height:1;margin:9px 0}
+
+.note{font-size:12px;color:var(--ink-3);margin-top:12px;border-left:2px solid var(--line-2);
+  padding-left:12px}
+
+/* trust boundary */
+.trust{display:flex;align-items:center;gap:12px;margin:14px 0 4px;
+  font-size:12px;font-weight:700;color:var(--warn);letter-spacing:.03em;text-transform:uppercase}
+.trust::before,.trust::after{content:"";height:0;flex:1;
+  border-top:2px dashed var(--warn);opacity:.6}
+
+/* inner loop centerpiece */
+.loop{border-color:var(--model);border-width:2px}
+.loop > .lbl{border-color:var(--model);color:var(--model-ink)}
+.cycle{display:grid;grid-template-columns:1fr auto 1fr;gap:14px 18px;align-items:center;margin-top:6px}
+.cyc-node{background:var(--panel-2);border:1px solid var(--line);border-radius:11px;padding:11px 13px}
+.cyc-node h4{margin:0 0 4px;font-family:Chivo,sans-serif;font-size:14px;font-weight:700}
+.cyc-node p{margin:0;font-size:12.3px;color:var(--ink-2)}
+.cyc-node.m{border-color:var(--model);background:var(--model-soft)}
+.cyc-node.m h4{color:var(--model-ink)}
+.cyc-node.t{border-color:var(--tool);background:var(--tool-soft)}
+.cyc-node.t h4{color:var(--tool-ink)}
+.cyc-node.h{border-color:var(--harness);background:var(--harness-soft)}
+.cyc-node.h h4{color:var(--harness-ink)}
+.cyc-mid{display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--wire);
+  font-size:12px;text-align:center;min-width:120px}
+.cyc-mid .big{font-size:26px;line-height:1}
+.decision{font-family:"JetBrains Mono",monospace;font-size:11.5px;color:var(--ink-2);
+  background:var(--panel-3);border-radius:6px;padding:3px 8px}
+.backedge{grid-column:1 / -1;display:flex;align-items:center;justify-content:center;gap:10px;
+  font-size:12px;color:var(--model-ink);font-weight:600;margin-top:2px}
+.backedge .track{flex:1;height:0;border-top:2px solid var(--model);opacity:.5;max-width:340px;position:relative}
+.backedge .track::before{content:"◀";position:absolute;left:-2px;top:-9px;color:var(--model);opacity:.8}
+
+.exits{margin-top:16px}
+.exits h5{margin:0 0 8px;font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3)}
+.exitgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:9px}
+.exit{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:9px 11px;font-size:12.2px}
+.exit b{display:block;font-family:"JetBrains Mono",monospace;font-size:12px;margin-bottom:2px}
+.exit.done b{color:var(--ok)}
+.exit.retry b{color:var(--warn)}
+.exit.stop b{color:var(--err)}
+.exit span{color:var(--ink-2)}
+
+/* two-column split */
+.split{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:820px){.split{grid-template-columns:1fr}.cycle{grid-template-columns:1fr}}
+
+/* permission chain */
+.chain{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px}
+.chain .step{background:var(--panel-2);border:1px solid var(--line);border-radius:8px;
+  padding:7px 10px;font-size:12.3px}
+.chain .step b{color:var(--ink)}
+.chain .sep{color:var(--wire);font-weight:700}
+.chain .step.last{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,transparent)}
+
+/* pipeline steps */
+.pipe{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.pipe .p{font-family:"JetBrains Mono",monospace;font-size:11.6px;background:var(--panel-2);
+  border:1px solid var(--line);border-radius:7px;padding:5px 9px;color:var(--ink-2)}
+.pipe .p.hook{border-color:var(--state);color:var(--state-ink)}
+.pipe .p.perm{border-color:var(--warn);color:var(--warn)}
+.pipe .p.run{border-color:var(--tool);color:var(--tool-ink)}
+.pipe .arr{color:var(--wire);align-self:center}
+
+/* tools grid */
+.tools{display:grid;grid-template-columns:repeat(auto-fit,minmax(122px,1fr));gap:9px;margin-top:4px}
+.tcell{background:var(--tool-soft);border:1px solid var(--tool);border-radius:9px;padding:9px 10px}
+.tcell h4{margin:0 0 2px;font-family:Chivo,sans-serif;font-size:13.5px;color:var(--tool-ink)}
+.tcell p{margin:0;font-size:11.6px;color:var(--ink-2)}
+.tcell.optin{background:var(--panel-2);border-color:var(--line);border-style:dashed}
+.tcell.optin h4{color:var(--ink)}
+.tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.03em;
+  padding:1px 6px;border-radius:6px;margin-top:5px}
+.tag.ro{background:var(--tool-soft);color:var(--tool-ink);border:1px solid var(--tool)}
+.tag.wr{background:var(--model-soft);color:var(--model-ink);border:1px solid var(--model)}
+.tag.par{background:var(--harness-soft);color:var(--harness-ink);border:1px solid var(--harness)}
+
+footer{margin-top:34px;color:var(--ink-3);font-size:12.5px}
+footer .fmap{columns:2;column-gap:28px;margin-top:10px}
+@media(max-width:640px){footer .fmap{columns:1}}
+footer .fmap div{break-inside:avoid;margin-bottom:5px}
+footer code{font-size:11.5px}
+.hr{height:1px;background:var(--line);border:0;margin:26px 0}
+.kicker{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);font-weight:700}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="kicker">tinyorbit</div>
+  <h1>Architecture &amp; the agent loop</h1>
+  <p class="sub">A small terminal coding agent in Python (~6.5k LOC). You type a request; it calls a
+  model over HTTPS; the model asks for tools; tinyorbit runs them locally and sends the results back,
+  repeating until the model stops asking. <b>Config &amp; params flow down; events stream up.</b>
+  Only the model is remote — files, edits, shell, and permissions stay local.</p>
+
+  <div class="legend">
+    <b>Concern:</b>
+    <span class="chip harness"><span class="dot"></span>Harness (loop / plumbing)</span>
+    <span class="chip model"><span class="dot"></span>Model &amp; transport</span>
+    <span class="chip tool"><span class="dot"></span>Tools &amp; execution</span>
+    <span class="chip state"><span class="dot"></span>State / policy / opt-in</span>
+  </div>
+</header>
+
+<!-- ── BOOTSTRAP ─────────────────────────────────────────────── -->
+<section class="band">
+  <span class="lbl">1 · Bootstrap — startup, once</span>
+  <p class="cap">Each phase narrows scope until every decision is made.
+    <span class="mono">main.py → bootstrap.py</span></p>
+  <div class="row">
+    <div class="box h"><h4>init(argv)</h4><p>Parse flags into an immutable <code>Config</code>; resolve model, provider, permission mode. Memoized.<span class="file mono">bootstrap.init()</span></p></div>
+    <div class="box h"><h4>setup(config)</h4><p>Fill <code>config.capabilities</code>: tool pool, memory, system prompt, and the opt-in slots (hooks, agents, skills, mcp_servers).<span class="file mono">bootstrap.setup()</span></p></div>
+    <div class="box h"><h4>launch(config)</h4><p>Pick a mode: <code>run_print_mode</code> (headless / bench) or <code>run_interactive</code> (REPL). Both converge on <code>run_turn</code>.<span class="file mono">bootstrap.launch()</span></p></div>
+  </div>
+  <div class="trust">trust boundary — above: only argv is read · below: with trust, project files &amp; memory load</div>
+</section>
+
+<div class="arrow-down">↓ Config</div>
+
+<!-- ── CONSUMERS / RENDERERS ─────────────────────────────────── -->
+<section class="band">
+  <span class="lbl">2 · Consumers — who drives the loop &amp; renders events</span>
+  <p class="cap">The loop yields events; a consumer is just a renderer. All are interface-agnostic below <code>run_turn</code>.</p>
+  <div class="row">
+    <div class="box h"><h4>REPL (interactive)</h4><p>Read-Eval-Print-Loop with Eval = the agent loop. Synchronous, line-oriented; an ANSI <code>Renderer</code> is the entire "print" step. Terminal <code>ask()</code> answers permission prompts.<span class="file mono">repl.py · run_interactive</span></p></div>
+    <div class="box h"><h4>Print mode (headless)</h4><p>One-shot: task in, run to completion, exit. The shape for scripts, CI, and SWE-bench.<span class="file mono">repl.py · run_print_mode</span></p></div>
+    <div class="box s"><h4>Runtime (embedding seam)</h4><p>Drive the loop as a library: a persistent session + an <code>on_event</code> callback receive the same event objects the terminal renders. No stdin ⇒ <code>ask=None</code>, decisions fall through like <code>--print</code>.<span class="file mono">runtime.py · Runtime</span></p></div>
+  </div>
+  <div class="note"><b>Outer loop</b> (once per user message): <code>run_turn</code> appends the user message, builds <code>QueryParams</code>, does <code>async for event in query(): render(event)</code>, then copies the final history back into <code>SessionState</code>. Nothing below it knows a terminal exists.</div>
+</section>
+
+<div class="arrow-down">↓ QueryParams (messages · system · tools · ctx · provider · cost)</div>
+
+<!-- ── INNER LOOP ────────────────────────────────────────────── -->
+<section class="band loop">
+  <span class="lbl">3 · The inner loop — once per model call · query.py</span>
+  <p class="cap">An async generator: <code>while True</code> → maybe compact → call model → tools? → execute → rebuild <code>LoopState</code>. Every <code>continue</code> site rebuilds the whole state so each transition is explicit.</p>
+
+  <div class="cycle">
+    <div class="cyc-node h">
+      <h4>① Context pipeline</h4>
+      <p>If context &gt; <code>150k</code> tokens: summarize the history and replace it (up to 3 failures). Layer&nbsp;4 compaction.</p>
+    </div>
+    <div class="cyc-mid">
+      <div class="big">→</div>
+      <div class="decision">build ModelRequest</div>
+    </div>
+    <div class="cyc-node m">
+      <h4>② Call model (stream)</h4>
+      <p><code>call_model(provider, req, abort)</code> yields <code>TextDelta</code>/<code>ThinkingDelta</code>/<code>StatusEvent</code>, ending in one <code>ModelResponse</code>. Abort checked between chunks.</p>
+    </div>
+
+    <div class="cyc-node h" style="grid-column:1;">
+      <h4>④ Rebuild LoopState</h4>
+      <p>Append assistant + <code>tool_result</code> user message; reset overrides; <code>transition="next_turn"</code>. Enforce <code>--max-turns</code>.</p>
+    </div>
+    <div class="cyc-mid">
+      <div class="decision">stop_reason?</div>
+      <div class="big">↓</div>
+      <div class="decision" style="color:var(--tool-ink)">tool_use → run</div>
+      <div class="decision" style="color:var(--ok)">end_turn → done</div>
+    </div>
+    <div class="cyc-node t">
+      <h4>③ Execute tools</h4>
+      <p>Partition into concurrency-safe groups; run each group under <code>asyncio.gather</code>. Yields <code>ToolStarted</code>/<code>ToolFinished</code> per call.</p>
+    </div>
+
+    <div class="backedge">
+      <span>next turn</span><div class="track"></div><span>full history re-sent every call (the model is stateless)</span>
+    </div>
+  </div>
+
+  <div class="exits">
+    <h5>Named exits &amp; recovery branches — every way the happy path breaks</h5>
+    <div class="exitgrid">
+      <div class="exit done"><b>completed</b><span>no tool calls, <code>end_turn</code>.</span></div>
+      <div class="exit stop"><b>refusal</b><span>model declined; category surfaced.</span></div>
+      <div class="exit stop"><b>max_turns</b><span>N tool rounds hit; results still recorded.</span></div>
+      <div class="exit retry"><b>max_tokens</b><span>escalate cap once, then nudge "continue" ×3.</span></div>
+      <div class="exit retry"><b>prompt_too_long</b><span>reactive compact &amp; retry once; 2nd is terminal.</span></div>
+      <div class="exit retry"><b>pause_turn</b><span>server-side pause; loop just continues.</span></div>
+      <div class="exit stop"><b>aborted_streaming</b><span>Ctrl+C during the model call.</span></div>
+      <div class="exit stop"><b>aborted_tools</b><span>Ctrl+C mid-tools; synth error results for every unanswered <code>tool_use</code>.</span></div>
+      <div class="exit stop"><b>model_error</b><span>unrecoverable transport error.</span></div>
+    </div>
+  </div>
+  <div class="note"><b>Injection seam:</b> <code>QueryDeps.call_model</code> &amp; <code>.compact</code> default to the real provider; tests swap in a scripted model &amp; fake compactor — no network.</div>
+</section>
+
+<div class="row" style="gap:16px;margin:6px 0 16px">
+  <div style="flex:1;text-align:center" class="arrow-down">↓ ModelRequest (② calls into layer 4)</div>
+  <div style="flex:1;text-align:center" class="arrow-down">↓ ToolCall (③ calls into layer 5)</div>
+</div>
+
+<div class="split">
+  <!-- ── PROVIDER / TRANSPORT ─────────────────────────────────── -->
+  <section class="band">
+    <span class="lbl">4 · Provider seam — model transport</span>
+    <p class="cap">The loop never imports a vendor SDK. It hands a neutral <code>ModelRequest</code> to <code>provider.stream()</code> and consumes a neutral event stream. <span class="mono">providers/</span></p>
+    <div class="row" style="margin-bottom:10px">
+      <div class="box m plain" style="flex:1 1 100%">
+        <h4>resolve_provider()</h4>
+        <p>Registry lookup by name → <code>$TINYORBIT_PROVIDER</code> → model-id heuristic. Unknown names trigger a lazy <code>import providers.&lt;name&gt;</code>, so an opt-in gateway self-registers.</p>
+      </div>
+    </div>
+    <div class="note" style="margin:0 0 12px">Two orthogonal axes: <b>dialect</b> = wire format (Anthropic Messages · OpenAI Chat) · <b>transport</b> = endpoint + auth (first-party · Bedrock · gateway). <code>ProviderCapabilities</code> gates features so missing ones degrade, never error.</div>
+    <div class="row">
+      <div class="box m"><h4>anthropic</h4><p>Reference transport. SDK used only for SSE parsing, creds, typed errors — not its loop.<span class="file mono">providers/anthropic.py</span></p></div>
+      <div class="box m"><h4>openai</h4><p>Chat dialect → canonical blocks via <code>NormalizedMessage</code>.<span class="file mono">providers/openai.py</span></p></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <div class="box m plain" style="flex:1 1 100%"><h4>bring-your-own ▸</h4><p>A custom transport — a self-hosted LLM gateway, a Bedrock-invoke endpoint, a new wire dialect — drops in as <code>providers/&lt;name&gt;.py</code> and self-registers on first lookup. The loop, tools, and permissions never change.<span class="file mono">providers/base.py · Provider</span></p></div>
+    </div>
+  </section>
+
+  <!-- ── TOOL EXECUTION + PERMISSIONS ─────────────────────────── -->
+  <section class="band">
+    <span class="lbl">5 · Tool execution &amp; permissions</span>
+    <p class="cap">From <code>tool_use</code> block to <code>tool_result</code> block. Always returns a result (the API rejects an unanswered call). <span class="mono">tools/execute.py · permissions.py</span></p>
+    <div class="kicker" style="margin-bottom:4px">run_tool pipeline</div>
+    <div class="pipe">
+      <span class="p">find_tool</span><span class="arr">→</span>
+      <span class="p">abort?</span><span class="arr">→</span>
+      <span class="p">schema + validate</span><span class="arr">→</span>
+      <span class="p hook">PreToolUse hooks</span><span class="arr">→</span>
+      <span class="p perm">permission</span><span class="arr">→</span>
+      <span class="p run">tool.call</span><span class="arr">→</span>
+      <span class="p">budget (30k)</span>
+    </div>
+    <div class="kicker" style="margin:16px 0 4px">permission chain — ask is the last resort</div>
+    <div class="chain">
+      <span class="step"><b>bypass</b> mode</span><span class="sep">→</span>
+      <span class="step">explicit <b>allow rules</b></span><span class="sep">→</span>
+      <span class="step"><b>read-only</b> tools</span><span class="sep">→</span>
+      <span class="step"><b>acceptEdits</b> (writes in cwd)</span><span class="sep">→</span>
+      <span class="step last"><b>ask</b> the human</span>
+    </div>
+    <div class="note" style="margin-top:14px">Concurrency: consecutive concurrency-safe calls run in parallel under one <code>gather</code>; unsafe calls are singleton groups, order preserved (Read-then-Edit stays ordered). Oversized output spills to disk with a preview + path.</div>
+  </section>
+</div>
+
+<div class="arrow-down">↓ the tool pool (advertised to the model; filtered by allowed/disallowed globs)</div>
+
+<!-- ── TOOLS ─────────────────────────────────────────────────── -->
+<section class="band">
+  <span class="lbl">6 · Tools — the six + opt-in</span>
+  <p class="cap">Registered in fixed order (order is part of the cached prompt prefix). <span class="mono">tools/</span></p>
+  <div class="tools">
+    <div class="tcell"><h4>Read</h4><p>Numbered lines, 2000/page; records mtime in the staleness ledger.</p><span class="tag ro">read-only</span> <span class="tag par">parallel</span></div>
+    <div class="tcell"><h4>Write</h4><p>Create/overwrite; refuses if unseen or changed since Read.</p><span class="tag wr">write</span></div>
+    <div class="tcell"><h4>Edit</h4><p>Exact-string replace, must match once unless <code>replace_all</code>.</p><span class="tag wr">write</span></div>
+    <div class="tcell"><h4>Bash</h4><p>Shell in cwd; a classifier decides read-only &amp; parallel per command.</p><span class="tag ro">depends</span></div>
+    <div class="tcell"><h4>Glob</h4><p>Files by pattern, newest first; skips <code>.git</code>/<code>node_modules</code>.</p><span class="tag ro">read-only</span> <span class="tag par">parallel</span></div>
+    <div class="tcell"><h4>Grep</h4><p>Regex over contents, <code>path:line:text</code>; skips binaries.</p><span class="tag ro">read-only</span> <span class="tag par">parallel</span></div>
+    <div class="tcell optin"><h4>Task ▸</h4><p>Dispatch a subagent: the same loop in a fresh context, own prompt &amp; narrower pool.</p><span class="tag" style="border:1px dashed var(--ink-3);color:var(--ink-3)">opt-in</span></div>
+    <div class="tcell optin"><h4>Skill ▸</h4><p>Load an on-demand instruction bundle into the turn.</p><span class="tag" style="border:1px dashed var(--ink-3);color:var(--ink-3)">opt-in</span></div>
+    <div class="tcell optin"><h4>mcp__… ▸</h4><p>External MCP-server tools, wrapped into the pool.</p><span class="tag" style="border:1px dashed var(--ink-3);color:var(--ink-3)">opt-in</span></div>
+  </div>
+</section>
+
+<!-- ── CAPABILITIES / STATE ──────────────────────────────────── -->
+<section class="band">
+  <span class="lbl">7 · Capabilities &amp; state — opt-in subsystems, zero cost when off</span>
+  <p class="cap">Discovered from <code>.tinyorbit/</code> at <code>setup()</code>; empty in a plain repo, so the default tool count and prompt cache are untouched.</p>
+  <div class="row">
+    <div class="box s"><h4>Memory</h4><p>Instruction files (root → cwd) folded into the system prompt.<span class="file mono">memory.py</span></p></div>
+    <div class="box s"><h4>Skills</h4><p>Named instruction bundles surfaced through the <code>Skill</code> tool.<span class="file mono">skills.py · skill_tool.py</span></p></div>
+    <div class="box s"><h4>Subagents</h4><p><code>AgentDefinition</code> (prompt, tools, per-agent effort/max_turns) run via a nested loop.<span class="file mono">agents.py · task_tool.py</span></p></div>
+    <div class="box s"><h4>Hooks</h4><p>PreToolUse guards that deny/allow/pass before permissions.<span class="file mono">hooks.py</span></p></div>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <div class="box s"><h4>MCP client</h4><p>Discover, connect, and list external tool servers (async startup).<span class="file mono">mcp/</span></p></div>
+    <div class="box s"><h4>Sessions</h4><p>Resume a saved id (append) or fork it (new id, original intact); JSONL on disk.<span class="file mono">sessions.py</span></p></div>
+    <div class="box s"><h4>SessionState</h4><p>Messages, turn count, session id — the conversation across turns.<span class="file mono">state.py</span></p></div>
+    <div class="box s"><h4>CostTracker</h4><p>Token usage, last-context tokens (drives compaction), USD estimate.<span class="file mono">state.py</span></p></div>
+  </div>
+  <div class="note">Cross-cutting &amp; free when unused: prompt caching, extended thinking, and observability — <code>TINYORBIT_TRACE=&lt;path&gt;</code> appends one JSON line per stream event; <code>--thinking-display summarized</code> surfaces reasoning. Defaults keep benchmark runs comparable.</div>
+</section>
+
+<hr class="hr">
+
+<footer>
+  <div class="kicker">One request, traced</div>
+  <p style="color:var(--ink-2);max-width:80ch;margin:8px 0 0">
+    <code>&gt; add a docstring to fast_path in main.py</code> → <b>iter 1</b>: text + <code>tool_use Read</code> (read-only, no ask)
+    → <b>iter 2</b>: <code>tool_use Edit</code> (permission chain reaches <em>ask</em>; staleness check; write)
+    → <b>iter 3</b>: text only, <code>end_turn</code> → <code>Done("completed")</code>. Three API calls, two tool runs, one prompt.
+  </p>
+  <div class="kicker" style="margin-top:22px">File map</div>
+  <div class="fmap mono">
+    <div><code>main.py</code> — CLI entry</div>
+    <div><code>bootstrap.py</code> — init · setup · launch · Config</div>
+    <div><code>repl.py</code> — REPL, print mode, Renderer, run_turn</div>
+    <div><code>runtime.py</code> — embedding seam (Runtime)</div>
+    <div><code>query.py</code> — the inner loop &amp; LoopState</div>
+    <div><code>providers/base.py</code> — Provider contract, registry, capabilities</div>
+    <div><code>providers/{anthropic,openai}.py</code> — dialects</div>
+    <div><code>tools/execute.py</code> — run_tool pipeline, concurrency</div>
+    <div><code>tools/{file,bash,search}_tools.py</code> — the six</div>
+    <div><code>permissions.py</code> — the resolution chain</div>
+    <div><code>state.py</code> — SessionState · CostTracker</div>
+    <div><code>agents.py · skills.py · hooks.py · memory.py · sessions.py</code> — opt-in</div>
+    <div><code>mcp/</code> — external tool servers</div>
+  </div>
+  <p style="margin-top:20px;color:var(--ink-3)">tinyorbit is an <b>agent harness</b>: the loop, tools, prompt, and permissions minus the model. Harness + model = agent. Generated from source; see <code>notes.md</code> for the narrative walkthrough.</p>
+</footer>
+
+</div>
+</body>
+</html>

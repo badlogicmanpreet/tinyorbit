@@ -123,7 +123,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("run", help="evolve a genome against an evaluator")
     p.add_argument("--out", required=True, help="run directory (resumes if it exists)")
     p.add_argument("--seed", default=None, help="seed genome dir (default: built-in harness text)")
-    p.add_argument("--evaluator", required=True, help="module:factory returning an Evaluator")
+    p.add_argument("--evaluator", required=True, help="module:factory or file.py:factory returning an Evaluator")
     p.add_argument("--arg", action="append", default=[], metavar="KEY=VALUE", help="evaluator factory kwarg")
     p.add_argument("--iterations", type=int, default=10)
     p.add_argument("--stages", default="train", help="cascade, e.g. 'smoke:0.2,train'")

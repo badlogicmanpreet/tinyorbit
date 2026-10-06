@@ -4,21 +4,25 @@
     python run.py                         # all tasks in tasks.json
     python run.py --only django__django-11734
     python run.py --dry-run               # print the docker commands, run nothing
+    python run.py --tasks tasks-hard10.json --run-id hard-1 --jobs 2 --score
 
 Per task: start the instance image, copy tinyorbit in, install it with uv,
 run `main.py --print` with the issue as the prompt, capture the transcript,
 take `git diff` from /testbed, append a prediction line, remove the container.
 
-Outputs (all under bench/):
+Outputs (all under bench/logs/<run-id>/, untracked; default run id is a UTC timestamp):
+    run.json                  the settings this run used
     transcripts/<id>.out      agent stdout (streamed text + tool activity)
     transcripts/<id>.err      agent stderr (cost line, tracebacks)
     transcripts/<id>.messages.json   full message history + token/cost ledger
     patches/<id>.diff         the model_patch
     predictions.jsonl         one line per task, swebench format
     results.csv               one row per task: turns, exit reason, cost, seconds, diff size
+    scores.json               with --score: per-instance verdict and failing tests (see scoring.py)
 
-Then score with:
-    .venv/bin/swebench eval verified -p predictions.jsonl --run-id tinyorbit-5 -j 1
+Rerunning with the same --run-id resumes: instances already in predictions.jsonl
+are skipped, so a crashed run (or one that only needs --score) costs nothing to redo.
+A task whose docker plumbing fails gets no prediction line, so the next rerun retries it.
 """
 
 from __future__ import annotations
@@ -31,10 +35,16 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
+import traceback
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import scoring
+
 HERE = Path(__file__).resolve().parent
+LOGS = HERE / "logs"
 TINYORBIT_SRC = HERE.parent                       # python-impl/
 STAGE = HERE / ".stage" / "tinyorbit"             # copy without .venv, bench, caches
 CONTAINER_APP = "/opt/tinyorbit"
@@ -150,6 +160,56 @@ def summarize(err_text: str, out_text: str, timed_out: bool) -> tuple[int, str, 
     return calls, reason, cost
 
 
+RESULT_HEADER = ["instance_id", "difficulty", "exit_reason", "api_calls", "cost_usd", "minutes", "diff_chars"]
+
+
+def done_ids(out: Path) -> set[str]:
+    preds = out / "predictions.jsonl"
+    if not preds.exists():
+        return set()
+    return {json.loads(line)["instance_id"] for line in preds.read_text().splitlines() if line.strip()}
+
+
+def run_task(task: dict, args: argparse.Namespace, api_key: str | None, out: Path) -> tuple[str, list] | None:
+    """One container, start to removal. Returns (prediction line, results row), or None on dry run."""
+    iid = task["instance_id"]
+    name = f"tinyorbit-{args.run_id}-{iid}".lower()      # run id in the name: two runs never share a container
+    print(f"\n=== {iid}  ({task['difficulty']})  {task['image']}")
+    tdir = out / "transcripts"
+    out_path, err_path = tdir / f"{iid}.out", tdir / f"{iid}.err"
+    try:
+        start_container(name, task["image"], api_key, args.dry_run)
+        install_tinyorbit(name, args.dry_run, args.genome)
+        seconds, timed_out = run_agent(name, render_prompt(task), args, out_path, err_path)
+        collect_transcript(name, tdir / f"{iid}.messages.json", args.dry_run)
+        if args.trace and not args.dry_run:
+            subprocess.run(["docker", "cp", f"{name}:{CONTAINER_TRACE}", str(tdir / f"{iid}.trace.jsonl")],
+                           capture_output=True)
+        patch = collect_patch(name, args.dry_run)
+    finally:
+        if not args.keep:
+            sh(["docker", "rm", "-f", name], dry=args.dry_run, check=False, capture=True)
+
+    if args.dry_run:
+        return None
+    (out / "patches" / f"{iid}.diff").write_text(patch)
+    calls, reason, cost = summarize(err_path.read_text(), out_path.read_text(), timed_out)
+    print(f"  -> {iid}: {reason}; {calls} calls; ${cost}; {seconds/60:.1f} min; diff {len(patch)} chars")
+    pred = json.dumps({"instance_id": iid, "model_name_or_path": scoring.MODEL_NAME, "model_patch": patch})
+    return pred, [iid, task["difficulty"], reason, calls, cost, f"{seconds/60:.1f}", len(patch)]
+
+
+def score(out: Path, run_id: str, tasks: list[dict], jobs: int) -> dict:
+    cmd = scoring.eval_command(run_id, jobs)
+    print(f"\n=== scoring: {' '.join(cmd)}", flush=True)
+    subprocess.run(cmd, cwd=out, check=False)
+    scores = scoring.parse_scores(out, run_id, [t["instance_id"] for t in tasks])
+    scoring.write_scores(out, scores)
+    missing = [i for i, r in scores["instances"].items() if r["status"] == "missing"]
+    print(f"  resolved {scores['resolved']}/{scores['total']}" + (f"; never scored: {missing}" if missing else ""))
+    return scores
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", action="append", default=[], help="instance id (repeatable)")
@@ -166,65 +226,84 @@ def main() -> int:
     ap.add_argument("--trace", action="store_true", help="record every SSE event to transcripts/<id>.trace.jsonl")
     ap.add_argument("--genome", default=None, metavar="DIR",
                     help="run with an evolved harness genome (see python -m tinyorbit.evolve)")
+    ap.add_argument("--run-id", default=None, help="output dir under bench/logs/ (default run-<UTC time>); reuse to resume")
+    ap.add_argument("--jobs", type=int, default=1, help="tasks (and scoring workers) in parallel")
+    ap.add_argument("--score", action="store_true", help="run swebench eval afterwards and write scores.json")
     args = ap.parse_args()
+    args.run_id = args.run_id or time.strftime("run-%Y%m%dT%H%MZ", time.gmtime())
 
     api_key = None if args.smoke else os.environ.get("ANTHROPIC_API_KEY")
-    if not args.smoke and not args.dry_run and not api_key:
-        print("ANTHROPIC_API_KEY is not set", file=sys.stderr)
-        return 2
-
     tasks = json.loads(Path(args.tasks).read_text())
     if args.only:
         tasks = [t for t in tasks if t["instance_id"] in args.only]
     if args.smoke:
         tasks = tasks[:1]
 
+    out = LOGS / args.run_id
     for d in ("transcripts", "patches"):
-        (HERE / d).mkdir(exist_ok=True)
-    stage_source()
-    results_path = HERE / "results.csv"
-    new_csv = not results_path.exists()
+        (out / d).mkdir(parents=True, exist_ok=True)
+    finished = done_ids(out)
+    todo = [t for t in tasks if t["instance_id"] not in finished or args.smoke]
+    if finished & {t["instance_id"] for t in tasks}:
+        print(f"resuming {args.run_id}: {len(tasks) - len(todo)} done, {len(todo)} to run")
+    if todo and not args.smoke and not args.dry_run and not api_key:
+        print("ANTHROPIC_API_KEY is not set", file=sys.stderr)
+        return 2
+    (out / "run.json").write_text(json.dumps({
+        "run_id": args.run_id, "tasks": str(Path(args.tasks).resolve()), "instances": [t["instance_id"] for t in tasks],
+        "model": args.model, "effort": args.effort, "max_turns": args.max_turns, "timeout_min": args.timeout_min,
+        "genome": str(Path(args.genome).resolve()) if args.genome else None,
+        "updated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }, indent=1) + "\n")
+    if todo:
+        stage_source()
 
-    for task in tasks:
-        iid = task["instance_id"]
-        name = f"tinyorbit-{iid.lower()}"
-        print(f"\n=== {iid}  ({task['difficulty']})  {task['image']}")
-        out_path = HERE / "transcripts" / f"{iid}.out"
-        err_path = HERE / "transcripts" / f"{iid}.err"
+    if args.smoke:
+        result = run_task(todo[0], args, api_key, out)
+        if result is None:
+            return 0
+        ok = "no credentials found" in (out / "transcripts" / f"{todo[0]['instance_id']}.out").read_text()
+        print("  smoke:", "OK, plumbing works" if ok else f"FAILED, see {out / 'transcripts'}")
+        return 0 if ok else 1
+
+    results_path = out / "results.csv"
+    lock = threading.Lock()
+    failed: list[str] = []
+
+    def one(task: dict) -> None:
         try:
-            start_container(name, task["image"], api_key, args.dry_run)
-            install_tinyorbit(name, args.dry_run, args.genome)
-            seconds, timed_out = run_agent(name, render_prompt(task), args, out_path, err_path)
-            collect_transcript(name, HERE / "transcripts" / f"{iid}.messages.json", args.dry_run)
-            if args.trace and not args.dry_run:
-                subprocess.run(["docker", "cp", f"{name}:{CONTAINER_TRACE}",
-                                str(HERE / "transcripts" / f"{iid}.trace.jsonl")], capture_output=True)
-            patch = collect_patch(name, args.dry_run)
-        finally:
-            if not args.keep:
-                sh(["docker", "rm", "-f", name], dry=args.dry_run, check=False, capture=True)
+            result = run_task(task, args, api_key, out)
+        except Exception:  # noqa: BLE001 — one broken container must not sink the other tasks
+            traceback.print_exc()
+            with lock:
+                failed.append(task["instance_id"])
+            return
+        if result is None:
+            return
+        pred, row = result
+        with lock:      # appends from worker threads; one writer at a time keeps lines whole
+            with (out / "predictions.jsonl").open("a") as fh:
+                fh.write(pred + "\n")
+            new_csv = not results_path.exists()
+            with results_path.open("a", newline="") as fh:
+                w = csv.writer(fh)
+                if new_csv:
+                    w.writerow(RESULT_HEADER)
+                w.writerow(row)
 
-        if args.dry_run:
-            continue
-        (HERE / "patches" / f"{iid}.diff").write_text(patch)
-        out_text, err_text = out_path.read_text(), err_path.read_text()
-        calls, reason, cost = summarize(err_text, out_text, timed_out)
-        print(f"  -> {reason}; {calls} calls; ${cost}; {seconds/60:.1f} min; diff {len(patch)} chars")
-        if args.smoke:
-            ok = "no credentials found" in out_text
-            print("  smoke:", "OK, plumbing works" if ok else "FAILED, see transcripts/")
-            return 0 if ok else 1
+    if args.jobs > 1:
+        with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+            list(pool.map(one, todo))
+    else:
+        for task in todo:
+            one(task)
 
-        with (HERE / "predictions.jsonl").open("a") as fh:
-            fh.write(json.dumps({"instance_id": iid, "model_name_or_path": "tinyorbit", "model_patch": patch}) + "\n")
-        with results_path.open("a", newline="") as fh:
-            w = csv.writer(fh)
-            if new_csv:
-                w.writerow(["instance_id", "difficulty", "exit_reason", "api_calls", "cost_usd", "minutes", "diff_chars"])
-                new_csv = False
-            w.writerow([iid, task["difficulty"], reason, calls, cost, f"{seconds/60:.1f}", len(patch)])
-
-    return 0
+    if failed:
+        print(f"\nharness errors (no prediction, rerun --run-id {args.run_id} to retry): {failed}", file=sys.stderr)
+    if args.score and not args.dry_run:
+        score(out, args.run_id, tasks, args.jobs)
+    print(f"\nrun dir: {out}")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

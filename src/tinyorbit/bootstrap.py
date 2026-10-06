@@ -49,6 +49,11 @@ class Config:
     fallbacks: bool = True
     thinking_display: str = "omitted"
     max_turns: int | None = None
+    # Self-evolving layer (tinyorbit.evolve): an operator-supplied genome dir
+    # overlays the prompt, memory, skills and tool descriptions; reflect asks
+    # the model for lessons after a --print run and writes them into it.
+    genome_dir: Path | None = None
+    reflect: bool = False
     data_dir: Path = Path.home() / ".tinyorbit"
     capabilities: dict = field(default_factory=dict)
 
@@ -82,6 +87,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--thinking-display", default="omitted", choices=["omitted", "summarized"],
                         help="'summarized' streams the model's reasoning summary; default omits it")
     parser.add_argument("--max-turns", type=int, default=None)
+    parser.add_argument("--genome", default=None, metavar="DIR",
+                        help="overlay an evolved harness genome (prompt, memory, lessons, skills, tool docs)")
+    parser.add_argument("--reflect", action="store_true",
+                        help="with --print and --genome, distill lessons from the run into the genome")
     return parser
 
 
@@ -98,6 +107,7 @@ def init(argv: list[str]) -> Config:
         return _init_cache
 
     args = build_parser().parse_args(argv)
+    genome = args.genome or os.environ.get("TINYORBIT_GENOME") or None
     config = Config(
         cwd=Path(args.cwd).resolve(),
         model=args.model,
@@ -116,6 +126,8 @@ def init(argv: list[str]) -> Config:
         fallbacks=args.fallbacks,
         thinking_display=args.thinking_display,
         max_turns=args.max_turns,
+        genome_dir=Path(genome).expanduser().resolve() if genome else None,
+        reflect=args.reflect or os.environ.get("TINYORBIT_REFLECT") == "1",
     )
 
     # ── TRUST BOUNDARY ──
@@ -158,14 +170,30 @@ def setup(config: Config) -> None:
     # defined, so the default tool count and prompt cache are untouched.
     agents = discover_agents(config.cwd) if config.trusted else []      # ch 8
     skills = discover_skills(config.cwd) if config.trusted else []      # ch 8
+    # Genome overlay (self-evolving layer). Not behind the trust gate: the
+    # operator names the directory explicitly; nothing is read from cwd. The
+    # genome is harness-level, so project memory and skills still win over it.
+    overlay = None
+    if config.genome_dir is not None:
+        from tinyorbit.evolve.genome import load_overlay
+
+        overlay = load_overlay(config.genome_dir)
+        memory = overlay.memory + memory
+        names = {s.name for s in skills}
+        skills = skills + [s for s in overlay.skills if s.name not in names]
     if agents:
         tools = tools + [TaskTool(agents)]
     if skills:
         tools = tools + [SkillTool(skills)]
+    if overlay is not None:
+        from tinyorbit.evolve.genome import apply_tool_descriptions
+
+        apply_tool_descriptions(tools, overlay.tool_descriptions)
     config.capabilities["tools"] = tools
     config.capabilities["memory"] = memory
     config.capabilities["skills"] = skills                              # ch 8
-    config.capabilities["system_prompt"] = build_system_prompt(config.cwd, memory)   # ch 4
+    template = overlay.system_template if overlay is not None else None
+    config.capabilities["system_prompt"] = build_system_prompt(config.cwd, memory, template)   # ch 4
     # PreToolUse guard hooks: empty unless TINYORBIT_HOOKS opts in (an embedder
     # driving tinyorbit as a library sets this slot directly instead). ch 12
     config.capabilities["hooks"] = discover_hooks()                     # ch 12

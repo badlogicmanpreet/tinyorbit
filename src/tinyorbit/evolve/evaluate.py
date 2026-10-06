@@ -15,7 +15,9 @@ overfitting its own training tasks.
 from __future__ import annotations
 
 import importlib
+import importlib.util
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol
 
 from tinyorbit.evolve.genome import Genome
@@ -71,9 +73,21 @@ async def run_cascade(evaluator: Evaluator, genome: Genome, stages: list[Stage],
 
 
 def load_evaluator(spec: str, kwargs: dict[str, Any] | None = None) -> Evaluator:
-    """'package.module:factory' -> factory(**kwargs). Keeps benchmarks out of core."""
-    module_name, _, attr = spec.partition(":")
+    """'package.module:factory' or 'path/to/file.py:factory' -> factory(**kwargs).
+
+    Keeps benchmarks out of core: an evaluator can live in a file that is not
+    part of any installed package (bench/evolve_eval.py), loaded by path.
+    """
+    module_name, _, attr = spec.rpartition(":")
     if not module_name or not attr:
-        raise ValueError(f"evaluator must look like 'module:factory', got {spec!r}")
-    factory = getattr(importlib.import_module(module_name), attr)
-    return factory(**(kwargs or {}))
+        raise ValueError(f"evaluator must look like 'module:factory' or 'file.py:factory', got {spec!r}")
+    if module_name.endswith(".py"):
+        path = Path(module_name).resolve()
+        if not path.is_file():
+            raise ValueError(f"evaluator file not found: {path}")
+        mod_spec = importlib.util.spec_from_file_location(f"_tinyorbit_evaluator_{path.stem}", path)
+        module = importlib.util.module_from_spec(mod_spec)
+        mod_spec.loader.exec_module(module)
+    else:
+        module = importlib.import_module(module_name)
+    return getattr(module, attr)(**(kwargs or {}))

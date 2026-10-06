@@ -37,7 +37,7 @@ export ANTHROPIC_API_KEY=...           # or `ant auth login`
 uv run python main.py                              # interactive REPL
 uv run python main.py "explain the bootstrap"      # REPL with a first prompt
 uv run python main.py --print "list the python files here"   # headless, streams to stdout
-uv run pytest                                      # 124 tests, no network
+uv run pytest                                      # 154 tests, no network
 ```
 
 Useful flags: `--model`, `--permission-mode {default,acceptEdits,bypassPermissions}`, `--allow 'Bash(git *)'`, `--allowed-tools 'Read,Grep'`, `--disallowed-tools 'Bash,mcp__*'`, `--effort xhigh`, `--max-turns 20`, `--no-fallbacks`, `--thinking-display summarized`, `--resume <id>` (with `--fork` to branch it). Inside the REPL: `/cost`, `/clear`, `/mode`, `/exit`. Ctrl+C mid-turn interrupts the turn; at the prompt it exits.
@@ -172,7 +172,7 @@ uv run python -m tinyorbit.evolve show --out runs/evo1
 uv run python main.py --genome runs/evo1/champion "fix the failing test"
 ```
 
-An evaluator is any object with `async evaluate(genome, stage) -> EvalResult(score, metrics, failures)`, loaded from `module:factory`, so benchmarks stay out of the core. `bench/run.py --genome DIR` runs SWE-bench with a genome. Without `--genome` nothing in this package is imported, and the seed genome reproduces the default prompt and tool schemas byte for byte (a test enforces it).
+An evaluator is any object with `async evaluate(genome, stage) -> EvalResult(score, metrics, failures)`, loaded from `module:factory` or `file.py:factory`, so benchmarks stay out of the core. `bench/evolve_eval.py` is the SWE-bench one (see [Benchmarking](#benchmarking)). Without `--genome` nothing in this package is imported, and the seed genome reproduces the default prompt and tool schemas byte for byte (a test enforces it).
 
 ## Testing
 
@@ -185,13 +185,23 @@ An evaluator is any object with `async evaluate(genome, stage) -> EvalResult(sco
 ```bash
 cd bench
 .venv/bin/python run.py --smoke                        # one container, no key: proves the plumbing
-.venv/bin/python run.py --tasks tasks-hard10.json --timeout-min 90
-.venv/bin/swebench eval verified -p predictions.jsonl --run-id my-run -j 1
+.venv/bin/python run.py --tasks tasks-hard10.json --run-id hard-1 --jobs 2 --score
 ```
 
-Per task it pulls the instance image, copies tinyorbit in, installs it with uv, runs `main.py --print` with the issue as the prompt, captures the transcript and the full message history, takes `git diff` from `/testbed`, and appends a prediction line. Other flags: `--only ID`, `--dry-run`, `--keep`, `--trace`, `--thinking-display`, `--model`, `--effort`, `--max-turns`.
+Per task it pulls the instance image, copies tinyorbit in, installs it with uv, runs `main.py --print` with the issue as the prompt, captures the transcript and the full message history, takes `git diff` from `/testbed`, and appends a prediction line. Everything lands in `bench/logs/<run-id>/` (untracked; the default id is a UTC timestamp). `--score` then runs `swebench eval verified` in that directory and reduces its output to `scores.json`: a verdict per instance plus the hidden tests that still fail. Rerunning the same `--run-id` resumes, skipping instances that already have a prediction. Other flags: `--only ID`, `--genome DIR`, `--dry-run`, `--keep`, `--trace`, `--thinking-display`, `--model`, `--effort`, `--max-turns`.
 
-Three frozen task sets ship here so runs are reproducible: `tasks-easy10.json` (seed 42, also the default `tasks.json`), `tasks-hard10.json` (the 1 to 4 h and >4 h tail, stratified by repository), and `tasks-five.json` (an earlier sample, kept for provenance). Run outputs (transcripts, patches, predictions, scoring) stay untracked under `bench/logs/<run-id>/`. See the last section of [notes.md](notes.md) for the method and for what to look for in a failure.
+Frozen task sets ship here so runs are reproducible: `tasks-easy10.json` (seed 42, also the default `tasks.json`), `tasks-hard10.json` (the 1 to 4 h and >4 h tail, stratified by repository), `tasks-holdout10.json` (ten more from that tail, disjoint from every other set, made by `make_split.py --seed 7`), `tasks-smoke3.json` (three of the easy ten), and `tasks-five.json` (an earlier sample, kept for provenance).
+
+To evolve the harness against SWE-bench, point the loop at `evolve_eval.py`. Stage `smoke` is the three easy tasks (a cheap check that an edit did not break anything), `train` is the hard ten (their failures are what the mutator reads), and `holdout` is the disjoint ten (only its score is ever used, to gate promotion).
+
+```bash
+uv run python -m tinyorbit.evolve seed bench/logs/g0
+uv run python -m tinyorbit.evolve run --out bench/logs/evo-1 --seed bench/logs/g0 \
+    --evaluator bench/evolve_eval.py:make --arg jobs=2 \
+    --stages smoke:0.67,train --holdout holdout --holdout-margin 0.1 --iterations 10
+```
+
+Each (genome, stage) pair is one `run.py --genome --score` run with a content-addressed id, so a resumed loop never pays twice for the same genome. An instance that was never scored raises instead of counting as a miss, because a docker hiccup says nothing about the genome. Budget for it honestly: one train-plus-holdout evaluation is twenty agent runs (about $20 and an hour at `--jobs 2` on the numbers above), and with ten tasks a single flip moves the score by 0.1. Re-run a champion before believing it. See the last section of [notes.md](notes.md) for the method and for what to look for in a failure.
 
 ## Layout
 
@@ -216,7 +226,7 @@ Three frozen task sets ship here so runs are reproducible: `tasks-easy10.json` (
     mcp/                   # external MCP tool servers (opt-in)
     evolve/                # self-evolving layer: genome, reflect, mutate, archive, loop (opt-in)
   tests/                   # scripted-model loop tests + tool/provider/subsystem tests, no network
-  bench/                   # SWE-bench runner: run.py, prompt.txt, frozen task sets
+  bench/                   # SWE-bench runner: run.py, scoring.py, evolve_eval.py, frozen task sets
   reports/                 # architecture.html + HTML write-ups of the benchmark runs, and their data
 ```
 

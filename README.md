@@ -112,6 +112,7 @@ The full, annotated version (every named loop exit, the trust boundary, the six 
 | Memory              | `src/tinyorbit/memory.py`         | TINYORBIT.md / AGENTS.md from home and every ancestor of cwd |
 | REPL / print mode   | `src/tinyorbit/repl.py`           | event rendering, Ctrl+C as abort signal, permission prompts |
 | Embedding seam      | `src/tinyorbit/runtime.py`        | drive the loop as a library: a persistent session, events to a caller's sink instead of the terminal |
+| Self-evolution      | `src/tinyorbit/evolve/`           | a genome of harness text; per-run lesson reflection; archive-based evolution gated on held-out tasks |
 
 Built and wired through `Config.capabilities`: sub-agents (a `Task` tool that runs a nested loop in a fresh context; opt-in via `.tinyorbit/agents/*.md`), skills (a `Skill` tool that pulls a named instruction bundle into context; opt-in via `.tinyorbit/skills/`), PreToolUse guard hooks (fail-closed allow/deny/pass policy checks that run before permissions; opt-in via `TINYORBIT_HOOKS` or set by an embedder), and MCP (opt-in via env). Not built yet: the lighter context-management layers (snip/microcompact/collapse). Only auto-compact and reactive compact exist.
 
@@ -149,6 +150,29 @@ uv run python main.py --print --thinking-display summarized "fix the failing tes
 `TINYORBIT_TRACE` makes the transport append one record per server-sent event: a millisecond offset, the event type, the delta type and its text, plus the shape of the history about to be resent and the usage ledger that comes back. Unset, it costs one environment lookup per call.
 
 Capturing one task showed what the loop looks like from the wire. Nineteen calls over a single reused HTTPS connection. Adaptive thinking firing on five of them and declining on fourteen. Uncached input pinned at exactly 2 tokens on every call while cache reads grew to 12,039. And a thinking pause showing up as 2.6 to 3.9 seconds of silence on an open socket, after which the whole summary arrives in a burst of deltas 0.2 ms apart. The replay is [reports/agent-loop-trace.html](reports/agent-loop-trace.html).
+
+## Self-evolving layer
+
+`src/tinyorbit/evolve/` lets the harness improve its own text from feedback while the model stays frozen. Everything it evolves lives in a *genome*: a small directory of Markdown that a run layers over the built-in defaults with `--genome DIR` (or `TINYORBIT_GENOME`).
+
+```
+system_prompt.md   memory.md   lessons.md   skills/<name>/SKILL.md   tools/<ToolName>.md
+```
+
+Two loops write to that one artifact set:
+
+- **Inner loop (`reflect.py`).** After a run, one model call reads the condensed transcript plus whatever outcome is known and distills at most three general lessons into `lessons.md`. The file is bounded and deduplicated, and the next run loads it as memory. `--print --genome DIR --reflect` does this live. `python -m tinyorbit.evolve reflect --transcript T --outcome failed --feedback "..."` does it offline with a verified outcome, which is worth much more than the agent's own "done".
+- **Outer loop (`loop.py`).** An evolutionary search over whole genomes. An LLM mutator reads the parent's failure reports, the attempt ledger (so it does not repeat rejected ideas) and a few strong variants, then proposes SEARCH/REPLACE edits. A child goes through cheap guards, then a staged cascade (smoke set first). Fitness is the train score minus a penalty for growth over the seed. The archive is a MAP-Elites grid over size and cost with islands. A child becomes champion only if it also improves on a held-out stage it never saw failures from. Every iteration is checkpointed and resumable.
+
+```bash
+uv run python -m tinyorbit.evolve seed runs/g0              # generation 0 = today's prompt and tool docs
+uv run python -m tinyorbit.evolve run --seed runs/g0 --out runs/evo1 \
+    --evaluator mypkg.evals:make --stages smoke:0.2,train --holdout holdout --iterations 20
+uv run python -m tinyorbit.evolve show --out runs/evo1
+uv run python main.py --genome runs/evo1/champion "fix the failing test"
+```
+
+An evaluator is any object with `async evaluate(genome, stage) -> EvalResult(score, metrics, failures)`, loaded from `module:factory`, so benchmarks stay out of the core. `bench/run.py --genome DIR` runs SWE-bench with a genome. Without `--genome` nothing in this package is imported, and the seed genome reproduces the default prompt and tool schemas byte for byte (a test enforces it).
 
 ## Testing
 
@@ -190,6 +214,7 @@ Three frozen task sets ship here so runs are reproducible: `tasks-easy10.json` (
       registry.py  task_tool.py  skill_tool.py
     agents.py  skills.py  hooks.py  sessions.py   # opt-in subsystems
     mcp/                   # external MCP tool servers (opt-in)
+    evolve/                # self-evolving layer: genome, reflect, mutate, archive, loop (opt-in)
   tests/                   # scripted-model loop tests + tool/provider/subsystem tests, no network
   bench/                   # SWE-bench runner: run.py, prompt.txt, frozen task sets
   reports/                 # architecture.html + HTML write-ups of the benchmark runs, and their data

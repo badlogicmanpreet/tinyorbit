@@ -40,6 +40,7 @@ STAGE = HERE / ".stage" / "tinyorbit"             # copy without .venv, bench, c
 CONTAINER_APP = "/opt/tinyorbit"
 CONTAINER_TRANSCRIPT = "/tmp/tinyorbit-transcript.json"   # full message history, copied out per task
 CONTAINER_TRACE = "/tmp/tinyorbit-trace.jsonl"           # one JSON line per SSE event, when --trace
+CONTAINER_GENOME = "/opt/tinyorbit-genome"                # evolved harness text, when --genome
 UV = "/root/.local/bin/uv"
 PLATFORM = "linux/amd64"                          # SWE-bench images are x86_64
 DEFAULT_TIMEOUT_MIN = 45
@@ -81,8 +82,11 @@ def start_container(name: str, image: str, api_key: str | None, dry: bool) -> No
     sh(["docker", "run", "-d", "--name", name, "--platform", PLATFORM, *env, "-w", "/testbed", image, "sleep", "infinity"], dry=dry, capture=True)
 
 
-def install_tinyorbit(name: str, dry: bool) -> None:
+def install_tinyorbit(name: str, dry: bool, genome: str | None = None) -> None:
     sh(["docker", "cp", str(STAGE), f"{name}:{CONTAINER_APP}"], dry=dry)
+    if genome:
+        # Outside /testbed, so the genome never leaks into the model patch.
+        sh(["docker", "cp", str(Path(genome).resolve()), f"{name}:{CONTAINER_GENOME}"], dry=dry)
     # uv installs its own Python 3.13 inside the container; the image's conda python is the repo's, not ours.
     sh(["docker", "exec", name, "sh", "-c", "curl -LsSf https://astral.sh/uv/install.sh | sh"], dry=dry, capture=True)
     sh(["docker", "exec", name, UV, "sync", "--project", CONTAINER_APP, "--no-group", "dev"], dry=dry, capture=True, timeout=900)
@@ -93,7 +97,8 @@ def install_tinyorbit(name: str, dry: bool) -> None:
 def run_agent(name: str, prompt: str, args: argparse.Namespace, out_path: Path, err_path: Path) -> tuple[float, bool]:
     cmd = [
         "docker", "exec", "-w", "/testbed", "-e", f"TINYORBIT_TRANSCRIPT={CONTAINER_TRANSCRIPT}",
-        *(["-e", f"TINYORBIT_TRACE={CONTAINER_TRACE}"] if args.trace else []), name,
+        *(["-e", f"TINYORBIT_TRACE={CONTAINER_TRACE}"] if args.trace else []),
+        *(["-e", f"TINYORBIT_GENOME={CONTAINER_GENOME}"] if args.genome else []), name,
         UV, "run", "--project", CONTAINER_APP, "python", f"{CONTAINER_APP}/main.py",
         "--print", "--permission-mode", "bypassPermissions",
         "--max-turns", str(args.max_turns), "--model", args.model,
@@ -159,6 +164,8 @@ def main() -> int:
     ap.add_argument("--timeout-min", type=int, default=DEFAULT_TIMEOUT_MIN, help="per-task wall-clock cap")
     ap.add_argument("--thinking-display", default="omitted", choices=["omitted", "summarized"])
     ap.add_argument("--trace", action="store_true", help="record every SSE event to transcripts/<id>.trace.jsonl")
+    ap.add_argument("--genome", default=None, metavar="DIR",
+                    help="run with an evolved harness genome (see python -m tinyorbit.evolve)")
     args = ap.parse_args()
 
     api_key = None if args.smoke else os.environ.get("ANTHROPIC_API_KEY")
@@ -186,7 +193,7 @@ def main() -> int:
         err_path = HERE / "transcripts" / f"{iid}.err"
         try:
             start_container(name, task["image"], api_key, args.dry_run)
-            install_tinyorbit(name, args.dry_run)
+            install_tinyorbit(name, args.dry_run, args.genome)
             seconds, timed_out = run_agent(name, render_prompt(task), args, out_path, err_path)
             collect_transcript(name, HERE / "transcripts" / f"{iid}.messages.json", args.dry_run)
             if args.trace and not args.dry_run:

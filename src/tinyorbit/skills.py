@@ -44,7 +44,11 @@ def parse_skill_file(path: Path, fallback_name: str) -> Skill | None:
 
 def discover_skills(cwd: Path) -> list[Skill]:
     """Load skills from `<cwd>/.tinyorbit/skills/`, or none if the dir is absent."""
-    root = Path(cwd) / ".tinyorbit" / "skills"
+    return load_skills_dir(Path(cwd) / ".tinyorbit" / "skills")
+
+
+def load_skills_dir(root: Path) -> list[Skill]:
+    """Load skills from any directory using the two layouts above."""
     if not root.is_dir():
         return []
     found: dict[str, Skill] = {}

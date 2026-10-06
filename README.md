@@ -37,7 +37,7 @@ export ANTHROPIC_API_KEY=...           # or `ant auth login`
 uv run python main.py                              # interactive REPL
 uv run python main.py "explain the bootstrap"      # REPL with a first prompt
 uv run python main.py --print "list the python files here"   # headless, streams to stdout
-uv run pytest                                      # 154 tests, no network
+uv run pytest                                      # 155 tests, no network
 ```
 
 Useful flags: `--model`, `--permission-mode {default,acceptEdits,bypassPermissions}`, `--allow 'Bash(git *)'`, `--allowed-tools 'Read,Grep'`, `--disallowed-tools 'Bash,mcp__*'`, `--effort xhigh`, `--max-turns 20`, `--no-fallbacks`, `--thinking-display summarized`, `--resume <id>` (with `--fork` to branch it). Inside the REPL: `/cost`, `/clear`, `/mode`, `/exit`. Ctrl+C mid-turn interrupts the turn; at the prompt it exits.

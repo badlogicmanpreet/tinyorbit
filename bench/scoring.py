@@ -1,7 +1,7 @@
 """Read what `swebench eval` wrote and reduce it to one scores.json per run.
 
     swebench eval verified -p predictions.jsonl --run-id R     (cwd = the run dir)
-        R/<model>.<run-id>.json                                     summary: resolved_ids, ...
+        R/<model>.<run-id>.json                                     summary: resolved_ids, ... (schema_version 2)
         R/logs/run_evaluation/<run-id>/<model>/<iid>/report.json    per instance: tests_status
 
 Both layouts are found by glob rather than fixed paths, so a minor swebench
@@ -22,9 +22,12 @@ from pathlib import Path
 
 MODEL_NAME = "tinyorbit"          # model_name_or_path in every prediction line
 SCORES = "scores.json"
-# summary key -> status, checked in order (resolved beats everything)
+# summary key -> status, checked in order (resolved beats everything). swebench 5.x adds
+# infra_failure_ids and ambiguous_failure_ids: neither is a verdict on the patch, so both
+# land in "error" and the evaluator retries them instead of scoring them as misses.
 SUMMARY_STATUS = (("resolved_ids", "resolved"), ("unresolved_ids", "unresolved"),
-                  ("empty_patch_ids", "empty_patch"), ("error_ids", "error"))
+                  ("empty_patch_ids", "empty_patch"), ("error_ids", "error"),
+                  ("infra_failure_ids", "error"), ("ambiguous_failure_ids", "error"))
 
 
 def swebench_cmd() -> str:

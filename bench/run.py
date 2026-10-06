@@ -200,6 +200,13 @@ def run_task(task: dict, args: argparse.Namespace, api_key: str | None, out: Pat
 
 
 def score(out: Path, run_id: str, tasks: list[dict], jobs: int) -> dict:
+    # swebench pulls through docker-py with no platform, which 404s on an arm64 host
+    # ("no matching manifest for linux/arm64"); a locally present amd64 image is used as is.
+    preds = [json.loads(line) for line in (out / "predictions.jsonl").read_text().splitlines() if line.strip()]
+    patched = {p["instance_id"] for p in preds if p["model_patch"].strip()}      # empty patches are never run
+    for t in tasks:
+        if t["instance_id"] in patched:
+            sh(["docker", "pull", "-q", "--platform", PLATFORM, t["image"]], dry=False, check=False, capture=True)
     cmd = scoring.eval_command(run_id, jobs)
     print(f"\n=== scoring: {' '.join(cmd)}", flush=True)
     subprocess.run(cmd, cwd=out, check=False)

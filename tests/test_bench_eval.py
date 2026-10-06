@@ -52,6 +52,9 @@ def fake_run(run_dir: Path, run_id: str, *, scored=IDS) -> None:
     ]}))
     summary = {"resolved_ids": ["a__a-1"], "unresolved_ids": ["b__b-2"], "empty_patch_ids": ["c__c-3"]}
     summary = {k: [i for i in v if i in scored] for k, v in summary.items()}
+    # keys swebench 5.x also writes (verified against a real run), including buckets we map to "error"
+    summary.update({"error_ids": [], "infra_failure_ids": [], "ambiguous_failure_ids": [],
+                    "incomplete_ids": ["other__o-9"], "schema_version": 2})
     (run_dir / f"tinyorbit.{run_id}.json").write_text(json.dumps(summary))
     report = run_dir / "logs" / "run_evaluation" / run_id / "tinyorbit" / "b__b-2" / "report.json"
     report.parent.mkdir(parents=True)
@@ -84,6 +87,20 @@ def test_result_from_run_feeds_failures_to_the_mutator(tmp_path):
     assert "test_parse_edge" in by_task["b__b-2"].summary and "broke: test_roundtrip" in by_task["b__b-2"].summary
     assert "my new test passes" in by_task["b__b-2"].detail       # the condensed transcript rides along
     assert "no patch" in by_task["c__c-3"].summary and "max_turns" in by_task["c__c-3"].summary
+
+
+def test_infra_and_ambiguous_failures_are_not_verdicts(tmp_path):
+    fake_run(tmp_path, "r1")
+    summary = tmp_path / "tinyorbit.r1.json"
+    data = json.loads(summary.read_text())
+    data.update({"unresolved_ids": [], "infra_failure_ids": ["b__b-2"]})
+    summary.write_text(json.dumps(data))
+    (tmp_path / "logs" / "run_evaluation" / "r1" / "tinyorbit" / "b__b-2" / "report.json").unlink()
+    scores = scoring.parse_scores(tmp_path, "r1", IDS)
+    assert scores["instances"]["b__b-2"]["status"] == "error"
+    scoring.write_scores(tmp_path, scores)
+    with pytest.raises(evolve_eval.HarnessError, match="b__b-2"):
+        evolve_eval.result_from_run(tmp_path, IDS)
 
 
 def test_unscored_instance_is_a_harness_error_not_a_failure(tmp_path):

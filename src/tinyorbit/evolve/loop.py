@@ -42,6 +42,7 @@ OnIteration = Callable[[Archive], None]
 
 PLACEHOLDERS = ("{cwd}", "{platform}")
 MAX_FAILURES_KEPT = 8
+MAX_MUTATOR_ERRORS = 3      # consecutive failed mutator calls before the run aborts
 
 
 @dataclass
@@ -144,6 +145,7 @@ async def evolve(seed: Genome, evaluator: Evaluator, mutator: Mutator, out_dir: 
         checkpoint()
 
     seed_size = int(archive.reference.get("size", seed.size()))
+    mutator_errors = 0
 
     while archive.iteration < cfg.iterations:
         if cfg.budget_usd is not None:
@@ -167,17 +169,28 @@ async def evolve(seed: Genome, evaluator: Evaluator, mutator: Mutator, out_dir: 
         events.emit("iteration_start", iteration=it, island=island, parent=parent.id, pick=archive.last_pick,
                     parent_fitness=parent.fitness, inspirations=[c.id for c, _ in ctx.inspirations])
 
-        proposal = None
         try:
             proposal = await mutator(parent_genome, ctx)
-            entry["summary"] = proposal.summary
+        except Exception as exc:  # noqa: BLE001
+            # A failed call (auth, network, outage) says nothing about the genome: it does
+            # not use up an attempt, and repeated failures stop the run (resumable) instead
+            # of burning every remaining iteration in a second.
+            mutator_errors += 1
+            archive.log({**entry, "outcome": INVALID, "summary": "", "reason": f"mutator error: {exc}"})
+            events.emit("mutator_error", iteration=it, error=str(exc), consecutive=mutator_errors)
+            log(f"[{it}] mutator error ({mutator_errors}/{MAX_MUTATOR_ERRORS}): {exc}")
+            if mutator_errors >= MAX_MUTATOR_ERRORS:
+                events.emit("run_abort", iteration=it, reason=f"mutator failed {mutator_errors} times in a row")
+                archive.save()
+                raise RuntimeError(f"mutator failed {mutator_errors} times in a row; last: {exc}") from exc
+            continue
+        mutator_errors = 0
+        entry["summary"] = proposal.summary
+        try:
             child = apply_edits(parent_genome, proposal.edits)
             reason = _guard(child, parent_genome, cfg, archive)
-        except EditError as exc:
+        except EditError as exc:      # a malformed proposal is one lost iteration
             child, reason = None, str(exc)
-        except Exception as exc:  # noqa: BLE001 — a failed proposal is one lost iteration
-            child, reason = None, f"mutator error: {exc}"
-            entry.setdefault("summary", "")
         _log_mutation(events, it, mutator, proposal, parent_genome, child)
 
         if child is None or reason:
@@ -252,17 +265,17 @@ def spend(events: EventLog) -> tuple[float, float]:
     stage, so its bill is the first worst-case estimate (a pre-flight budget
     check rather than a hard stop mid-stage, which would waste the stage).
     """
-    per_step: dict[int, float] = {}
+    spent = 0.0
+    per_step: dict[int, float] = {}       # what each step cost, reused or not: the worst-case yardstick
     for ev in events.read():
-        if ev["kind"] == "stage_end" and not (ev.get("info") or {}).get("cached"):
-            usd = float(ev.get("cost_usd") or 0.0)
-        elif ev["kind"] == "mutation":
-            usd = float(ev.get("cost_usd") or 0.0)
-        else:
+        if ev["kind"] not in ("stage_end", "mutation"):
             continue
+        usd = float(ev.get("cost_usd") or 0.0)
         it = ev.get("iteration", -1)
         per_step[it] = per_step.get(it, 0.0) + usd
-    return sum(per_step.values()), max(per_step.values(), default=0.0)
+        if not (ev.get("info") or {}).get("cached"):
+            spent += usd
+    return spent, max(per_step.values(), default=0.0)
 
 
 def _log_mutation(events: EventLog, it: int, mutator, proposal: Proposal | None,

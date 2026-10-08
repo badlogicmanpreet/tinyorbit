@@ -86,6 +86,7 @@ class Run:
     running: dict | None          # the stage_start still waiting for its stage_end
     finished: bool
     budget_stop: dict | None = None
+    abort: dict | None = None
 
     @property
     def stages(self) -> list[str]:
@@ -117,6 +118,7 @@ def load(root: Path) -> Run:
     running: dict | None = None
     finished = False
     budget_stop: dict | None = None
+    abort: dict | None = None
 
     def step(it: int) -> Step:
         return steps.setdefault(it, Step(it))
@@ -129,6 +131,8 @@ def load(root: Path) -> Run:
             finished, running = True, None
         elif kind == "budget_stop":
             budget_stop = ev
+        elif kind == "run_abort":
+            abort, running = ev, None
         elif kind == "stage_start":
             running = ev
         elif kind == "stage_end":
@@ -152,7 +156,8 @@ def load(root: Path) -> Run:
         elif kind == "iteration_end":
             step(it).end = ev
     finished = finished and (budget_stop is not None or archive.iteration >= int(config.get("iterations", 0) or 0))
-    return Run(root, archive, events, dict(sorted(steps.items())), config, running, finished, budget_stop)
+    return Run(root, archive, events, dict(sorted(steps.items())), config, running, finished, budget_stop,
+               None if finished else abort)
 
 
 def lineage(run: Run, cid: str | None) -> list[str]:
@@ -581,6 +586,9 @@ def status_line(run: Run) -> str:
                 f'of {money(b["budget_usd"])}, and one more attempt could have cost up to {money(b["reserve_usd"])}.</div>')
     if run.finished:
         return '<div class="status done">Finished.</div>'
+    if run.abort:
+        return (f'<div class="status live">Stopped at attempt {run.abort["iteration"]}: {esc(run.abort["reason"])}. '
+                'Rerun the same command to resume.</div>')
     last_ts = run.events[-1]["ts"] if run.events else "never"
     if run.running:
         r = run.running

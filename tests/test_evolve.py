@@ -305,7 +305,7 @@ async def test_evolve_resumes_from_checkpoint(tmp_path):
 async def test_duplicate_and_mutator_errors_are_logged_not_fatal(tmp_path):
     write = Proposal("add memory", [Edit("memory.md", "", "Run the tests.\n")])
     evaluator = FakeEvaluator()
-    mutator, _ = scripted_mutator([write, write, RuntimeError("boom")])
+    mutator, _ = scripted_mutator([write, write, RuntimeError("boom"), PROPOSALS[2]])
     archive = await evolve(seed_genome(), evaluator, mutator, tmp_path / "run", loop_config(3),
                            log=lambda _: None)
     reasons = [e.get("reason", "") for e in archive.ledger()]
@@ -313,8 +313,17 @@ async def test_duplicate_and_mutator_errors_are_logged_not_fatal(tmp_path):
     # g0001); either way it is rejected before any evaluation is spent.
     assert any("duplicate of g0001" in r or "no-op" in r for r in reasons)
     assert any("mutator error: boom" in r for r in reasons)
-    assert len(archive.candidates) == 2
-    assert len(evaluator.calls) == 3 + 2           # seed: smoke+train+holdout; g0001: smoke+train
+    # the failed call did not use up iteration 2: it was retried and produced g0002
+    assert archive.iteration == 3 and len(archive.candidates) == 3
+    assert len(evaluator.calls) == 3 + 2 + 1       # seed: 3 stages; g0001: smoke+train; g0002: smoke
+
+
+async def test_repeated_mutator_failures_abort_without_burning_iterations(tmp_path):
+    evaluator = FakeEvaluator()
+    mutator, _ = scripted_mutator([RuntimeError("401")] * 3)
+    with pytest.raises(RuntimeError, match="3 times in a row"):
+        await evolve(seed_genome(), evaluator, mutator, tmp_path / "run", loop_config(5), log=lambda _: None)
+    assert Archive.open(tmp_path / "run").iteration == 0          # resume starts at attempt 0 again
 
 
 def test_archive_grid_keeps_lean_and_verbose_variants(tmp_path):

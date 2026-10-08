@@ -61,6 +61,7 @@
     </div>
     <h3 style="margin-top:14pt">Contents</h3>
     <div class="toc">
+      <div><b>0</b>The simple version, and what it costs</div>
       <div><b>1</b>Why a self-evolving layer</div>
       <div><b>2</b>The genome</div>
       <div><b>3</b>Inner loop: reflection</div>
@@ -78,8 +79,146 @@
   <p class="meta">tinyorbit, branch <code>feat/self-evolve</code> · <code>src/tinyorbit/evolve/</code> (~1,300 lines) and <code>bench/</code> (evaluator, scoring, splits) · 155 tests, no network · October 2026</p>
 </section>
 
+<!-- ───────────────────────────── 0 ───────────────────────────── -->
+<h2 style="border-top:none; margin-top:0">0 · The simple version, and what it costs</h2>
+
+<p>Forget the machinery for a moment. Evolve does this:</p>
+<ol>
+  <li><b>Run today's tinyorbit (generation 0)</b> on 10 hard problems. Say it solves 7/10. That is the score to beat.</li>
+  <li><b>Change the genome a little.</b> An LLM reads why the 3 hard problems failed and edits the prompt, a skill or a lesson.</li>
+  <li><b>Test the changed version.</b> First on 3 easy problems: if it now fails one, the change broke something, so throw it away (cheap). Then on the 10 hard problems: did it beat 7/10?</li>
+  <li><b>If it did, check it on 10 <em>other</em> hard problems it has never seen.</b> It becomes the new best only if it also does better there. That proves the change helps in general, not just on the 10 it practised on.</li>
+  <li><b>Repeat</b> steps 2 to 4. Each repeat is one <b>iteration</b>, and each one builds on the versions that did well.</li>
+</ol>
+<p>The 3 easy problems are not what we improve: tinyorbit already solves them all. They are a safety check that a change did not break the agent. The score that counts is on the <b>hard</b> problems, and a change only wins if it also helps on hard problems it never trained on.</p>
+
+<figure>
+<svg viewBox="0 0 700 520" width="100%" style="background:#fdfbf5; border:0.6pt solid #e6e0cf; border-radius:4pt">
+  <defs>
+    <filter id="pencil" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="7" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="3.2"/>
+    </filter>
+    <filter id="pencil2" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="2" seed="21" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2.4"/>
+    </filter>
+    <marker id="ph" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M1,1 L10,6 L1,11" fill="none" stroke="#3a3a3a" stroke-width="1.6" stroke-linecap="round"/>
+    </marker>
+  </defs>
+  <style>
+    .hand { font-family: "Bradley Hand", "Chalkboard SE", "Comic Sans MS", cursive; fill:#2b2b2b; }
+    .t { font-size: 17px; font-weight: 700; }
+    .s { font-size: 13.5px; fill:#4a4a4a; }
+    .n { font-size: 13px; fill:#7a3b1d; }
+    .g { fill:none; stroke:#3a3a3a; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; }
+    .g2 { fill:none; stroke:#8a8a8a; stroke-width:0.9; stroke-linecap:round; }
+  </style>
+
+  <!-- 1: generation 0 -->
+  <g filter="url(#pencil)">
+    <rect x="22" y="22" width="220" height="86" rx="10" class="g" style="fill:#f3efe2"/>
+    <rect x="25" y="25" width="216" height="82" rx="10" class="g2"/>
+  </g>
+  <text x="132" y="50" text-anchor="middle" class="hand t">1 · today's tinyorbit</text>
+  <text x="132" y="72" text-anchor="middle" class="hand s">generation 0, on 10 hard</text>
+  <text x="132" y="93" text-anchor="middle" class="hand s">solves 7/10 = score to beat</text>
+
+  <g filter="url(#pencil2)"><path d="M246 64 C 290 58, 320 60, 352 64" class="g" marker-end="url(#ph)"/></g>
+
+  <!-- 2: change -->
+  <g filter="url(#pencil)">
+    <rect x="360" y="22" width="232" height="86" rx="10" class="g" style="fill:#fbecdf"/>
+    <rect x="363" y="25" width="228" height="82" rx="10" class="g2"/>
+  </g>
+  <text x="476" y="50" text-anchor="middle" class="hand t">2 · change the genome</text>
+  <text x="476" y="72" text-anchor="middle" class="hand s">an LLM reads why 3 failed,</text>
+  <text x="476" y="93" text-anchor="middle" class="hand s">edits prompt / skill / lesson</text>
+
+  <g filter="url(#pencil2)"><path d="M476 110 C 472 128, 474 138, 476 152" class="g" marker-end="url(#ph)"/></g>
+
+  <!-- 3a: easy -->
+  <g filter="url(#pencil)">
+    <rect x="360" y="158" width="232" height="70" rx="10" class="g" style="fill:#e8f1ea"/>
+    <rect x="363" y="161" width="228" height="66" rx="10" class="g2"/>
+  </g>
+  <text x="476" y="185" text-anchor="middle" class="hand t">3 · 3 easy problems</text>
+  <text x="476" y="208" text-anchor="middle" class="hand s">still solves them all?</text>
+
+  <!-- bin -->
+  <g filter="url(#pencil2)"><path d="M358 194 C 300 196, 250 194, 214 194" class="g" marker-end="url(#ph)"/></g>
+  <text x="290" y="184" text-anchor="middle" class="hand n">no</text>
+  <g filter="url(#pencil)">
+    <path d="M150 172 L206 172 M156 172 L162 228 L194 228 L200 172 M168 182 L170 220 M178 182 L178 220 M188 182 L186 220 M168 172 L170 164 L186 164 L188 172" class="g"/>
+  </g>
+  <text x="100" y="200" text-anchor="middle" class="hand s">throw it</text>
+  <text x="100" y="218" text-anchor="middle" class="hand s">away (~$1)</text>
+
+  <g filter="url(#pencil2)"><path d="M476 230 C 479 246, 474 256, 476 270" class="g" marker-end="url(#ph)"/></g>
+  <text x="490" y="254" class="hand n">yes</text>
+
+  <!-- 3b: hard -->
+  <g filter="url(#pencil)">
+    <rect x="360" y="276" width="232" height="70" rx="10" class="g" style="fill:#e8f1ea"/>
+    <rect x="363" y="279" width="228" height="66" rx="10" class="g2"/>
+  </g>
+  <text x="476" y="303" text-anchor="middle" class="hand t">10 hard problems</text>
+  <text x="476" y="326" text-anchor="middle" class="hand s">beats 7/10?</text>
+
+  <g filter="url(#pencil2)"><path d="M476 348 C 473 364, 478 374, 476 388" class="g" marker-end="url(#ph)"/></g>
+  <text x="490" y="372" class="hand n">yes</text>
+
+  <!-- 4: unseen -->
+  <g filter="url(#pencil)">
+    <rect x="360" y="394" width="232" height="70" rx="10" class="g" style="fill:#ece6f6"/>
+    <rect x="363" y="397" width="228" height="66" rx="10" class="g2"/>
+  </g>
+  <text x="476" y="421" text-anchor="middle" class="hand t">4 · 10 unseen hard</text>
+  <text x="476" y="444" text-anchor="middle" class="hand s">better there too?</text>
+
+  <!-- champion -->
+  <g filter="url(#pencil2)"><path d="M358 430 C 300 432, 260 430, 236 430" class="g" marker-end="url(#ph)"/></g>
+  <text x="300" y="420" text-anchor="middle" class="hand n">yes</text>
+  <g filter="url(#pencil)">
+    <rect x="22" y="394" width="208" height="76" rx="10" class="g" style="fill:#fff3c4"/>
+    <rect x="25" y="397" width="204" height="72" rx="10" class="g2"/>
+    <path d="M52 412 L57 424 L70 425 L60 433 L63 446 L52 439 L41 446 L44 433 L34 425 L47 424 Z" class="g" style="fill:#f4d35e"/>
+  </g>
+  <text x="140" y="424" text-anchor="middle" class="hand t">new champion</text>
+  <text x="140" y="447" text-anchor="middle" class="hand s">the version we ship</text>
+
+  <!-- repeat loop on the right -->
+  <g filter="url(#pencil2)">
+    <path d="M594 311 C 640 311, 650 300, 652 250 M594 429 C 650 429, 660 400, 660 300 C 660 200, 662 120, 640 70 C 630 60, 612 62, 598 64" class="g" marker-end="url(#ph)"/>
+  </g>
+  <text x="606" y="303" class="hand n">no</text>
+  <text x="606" y="421" class="hand n">no</text>
+  <text x="676" y="250" text-anchor="middle" class="hand s" transform="rotate(90 676 250)">5 · repeat: keep it in the archive, try another change</text>
+  <g filter="url(#pencil2)"><path d="M140 474 C 140 492, 300 500, 640 498 C 664 496, 668 480, 662 440" class="g2" style="stroke-dasharray:5 5"/></g>
+  <text x="300" y="512" text-anchor="middle" class="hand s">the champion is a parent for the next change too</text>
+</svg>
+<figcaption>Figure 0. One iteration, in pencil. Each trip around the loop costs between about $1 (fails the easy check) and about $21 (goes all the way to the unseen problems).</figcaption>
+</figure>
+
+<h3>What it costs</h3>
+<p>Measured prices from the earlier benchmark runs (claude-opus-5, 60-turn cap): <b>a hard problem costs about $1</b> per agent run, an easy one about $0.35. Scoring runs locally in Docker and costs nothing. The LLM that proposes each change costs cents.</p>
+<table>
+  <tr><th>Step</th><th style="width:22%">Agent runs</th><th style="width:16%">Cost</th></tr>
+  <tr><td>Generation 0: 3 easy + 10 hard + 10 unseen hard (paid once)</td><td>23</td><td>≈ $21</td></tr>
+  <tr><td>An iteration thrown away at the easy check</td><td>3</td><td>≈ $1</td></tr>
+  <tr><td>An iteration that runs the 10 hard but does not beat the best</td><td>13</td><td>≈ $11</td></tr>
+  <tr><td>An iteration that also runs the 10 unseen hard</td><td>23</td><td>≈ $21</td></tr>
+  <tr><td>A change the guards reject before running anything (duplicate, broken edit)</td><td>0</td><td>$0</td></tr>
+</table>
+<div class="box green">
+<p><b>Total for a first run of 5 iterations: about $75</b> in a typical mix, with a floor of about $26 (every change fails the easy check) and a ceiling of about $130 (every change goes all the way). Add about $10 to re-run the final champion on the unseen problems once, to confirm it was not luck. Wall time is about 3 to 5 hours with two tasks in parallel.</p>
+<p><b>For 10 iterations: about $135 typical</b>, between $31 and $235.</p>
+</div>
+<p class="small">These are estimates, not caps. An evolved prompt that makes the agent work longer raises the per-problem cost, and a hard problem can run to the 60-turn limit. A run can be stopped at any moment and resumed later, losing nothing that has finished.</p>
+
 <!-- ───────────────────────────── 1 ───────────────────────────── -->
-<h2>1 · Why a self-evolving layer</h2>
+<h2 class="page-break">1 · Why a self-evolving layer</h2>
 
 <p>An agent is a harness plus a model. tinyorbit already owns the harness: the loop, the tools, the permission chain, the system prompt. When the agent fails a task, the failure usually lives in that harness text, not in the weights. The prompt never told it to reproduce the bug before fixing it. A tool description invites a lazy use. No lesson says "your own new test passing is not proof." Those are cheap to change and expensive to find by hand.</p>
 
@@ -531,7 +670,8 @@ bench/.venv/bin/python bench/run.py --tasks ... --genome bench/logs/evo-1/champi
   <tr><td>Iteration rejected at smoke</td><td>3</td><td>$1</td><td>5 min</td></tr>
   <tr><td>Iteration that reaches train</td><td>13</td><td>$11</td><td>30 to 35 min</td></tr>
   <tr><td>Iteration that reaches held-out</td><td>23</td><td>$21</td><td>1 h</td></tr>
-  <tr><td><b>10 iterations, typical mix</b></td><td>~130 to 200</td><td><b>$110 to $210</b></td><td>6 to 10 h</td></tr>
+  <tr><td><b>5 iterations, typical mix</b></td><td>~80</td><td><b>≈ $75</b> ($26 to $130)</td><td>3 to 5 h</td></tr>
+  <tr><td><b>10 iterations, typical mix</b></td><td>~140</td><td><b>≈ $135</b> ($31 to $235)</td><td>6 to 10 h</td></tr>
 </table>
 <p>Plus about one mutator call per iteration (cents). Guard rejections and cache hits cost nothing.</p>
 

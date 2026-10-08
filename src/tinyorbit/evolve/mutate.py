@@ -152,9 +152,21 @@ def parse_proposal(raw: str) -> Proposal:
 
 
 class LLMMutator:
-    def __init__(self, complete: Complete) -> None:
+    """Wraps a Complete. Keeps the last prompt and its cost so the loop can log them."""
+
+    def __init__(self, complete: Complete, *, cost=None, model: str = "") -> None:
         self._complete = complete
+        self._cost, self._model = cost, model            # optional CostTracker, for per-call USD
+        self.last_prompt = ""
+        self.last_cost_usd: float | None = None
+
+    def _spent(self) -> float | None:
+        return self._cost.estimate_usd(self._model) if self._cost is not None else None
 
     async def __call__(self, genome: Genome, ctx: MutationContext) -> Proposal:
-        raw = await self._complete(MUTATE_SYSTEM, build_mutation_prompt(genome, ctx))
+        self.last_prompt = build_mutation_prompt(genome, ctx)
+        before = self._spent()
+        raw = await self._complete(MUTATE_SYSTEM, self.last_prompt)
+        after = self._spent()
+        self.last_cost_usd = (after - before) if before is not None and after is not None else None
         return parse_proposal(raw)

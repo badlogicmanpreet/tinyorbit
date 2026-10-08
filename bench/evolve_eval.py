@@ -111,6 +111,9 @@ def result_from_run(run_dir: Path, instance_ids: list[str]) -> EvalResult:
                  "resolved": float(resolved), "total": float(total)},
         failures=failures,
         cost_usd=cost,
+        # provenance for the event log: where to look, and the per-task verdicts behind the score
+        info={"run_id": run_dir.name, "run_dir": str(run_dir),
+              "tasks": {iid: v["status"] for iid, v in verdicts.items()}},
     )
 
 
@@ -143,7 +146,9 @@ class BenchEvaluator:
         run_id = self.run_id(genome, stage)
         run_dir = self.logs / run_id
         try:
-            return result_from_run(run_dir, ids)              # memoised: this genome already ran here
+            result = result_from_run(run_dir, ids)            # memoised: this genome already ran here
+            result.info["cached"] = True                      # cost_usd was spent by the earlier run
+            return result
         except (FileNotFoundError, HarnessError):
             pass
         genome_dir = self.logs / "evo-genomes" / genome.fingerprint()
@@ -151,7 +156,9 @@ class BenchEvaluator:
             genome.save(genome_dir)
         proc = await asyncio.create_subprocess_exec(*self.command(tasks_file, run_id, genome_dir), cwd=HERE)
         await proc.wait()
-        return result_from_run(run_dir, ids)
+        result = result_from_run(run_dir, ids)
+        result.info["cached"] = False
+        return result
 
 
 def make(**kwargs: str) -> BenchEvaluator:

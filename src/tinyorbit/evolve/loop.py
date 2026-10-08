@@ -17,24 +17,28 @@ Three choices here exist to stop a self-improving loop from fooling itself:
 the held-out gate (accept only what generalizes), the size penalty (the
 regularized objective that keeps prompts from bloating to fit the train set),
 and the ledger (rejected ideas are remembered and shown to the next proposer).
-Everything is checkpointed, so a benchmark-scale run can be killed and resumed.
+Everything is checkpointed, so a benchmark-scale run can be killed and resumed,
+and every step is written to events.jsonl (events.py) so report.py can replay it.
 """
 
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass, field
+import time
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Awaitable, Callable
 
 from tinyorbit.evolve.archive import INVALID, POOLED, REJECTED, Archive, Candidate
 from tinyorbit.evolve.edits import EditError, apply_edits
 from tinyorbit.evolve.evaluate import EvalResult, Evaluator, Stage, run_cascade
+from tinyorbit.evolve.events import EventLog, genome_diff
 from tinyorbit.evolve.genome import SYSTEM_PROMPT, Genome
 from tinyorbit.evolve.mutate import MutationContext, Proposal
 
 Mutator = Callable[[Genome, MutationContext], Awaitable[Proposal]]
 Log = Callable[[str], None]
+OnIteration = Callable[[Archive], None]
 
 PLACEHOLDERS = ("{cwd}", "{platform}")
 MAX_FAILURES_KEPT = 8
@@ -88,16 +92,55 @@ def _guard(child: Genome, parent: Genome, cfg: EvolveConfig, archive: Archive) -
     return None
 
 
+class _Recorder:
+    """Evaluator wrapper that logs each stage as it starts and ends (live progress)."""
+
+    def __init__(self, inner: Evaluator, events: EventLog, thresholds: dict[str, float]) -> None:
+        self.inner, self.events, self.thresholds = inner, events, thresholds
+        self.candidate, self.iteration = "", -1
+
+    async def evaluate(self, genome: Genome, stage: str) -> EvalResult:
+        self.events.emit("stage_start", iteration=self.iteration, candidate=self.candidate, stage=stage,
+                         fingerprint=genome.fingerprint())
+        started = time.monotonic()
+        result = await self.inner.evaluate(genome, stage)
+        min_score = self.thresholds.get(stage)
+        self.events.emit(
+            "stage_end", iteration=self.iteration, candidate=self.candidate, stage=stage,
+            score=result.score, min_score=min_score,
+            passed=None if min_score is None else result.score >= min_score,
+            seconds=round(time.monotonic() - started, 1), cost_usd=result.cost_usd,
+            metrics=result.metrics, info=result.info,
+            failures=[{"task": f.task, "summary": f.summary} for f in result.failures],
+        )
+        return result
+
+
 async def evolve(seed: Genome, evaluator: Evaluator, mutator: Mutator, out_dir: Path,
-                 cfg: EvolveConfig | None = None, log: Log = print) -> Archive:
+                 cfg: EvolveConfig | None = None, log: Log = print,
+                 on_iteration: OnIteration | None = None) -> Archive:
     cfg = cfg or EvolveConfig()
     archive = Archive.open(out_dir, num_islands=cfg.num_islands, feature_bins=cfg.feature_bins,
                            rng=random.Random(cfg.rng_seed))
     # A resumed run must not replay the same random choices from iteration 0.
     archive.rng.seed(f"{cfg.rng_seed}:{archive.iteration}")
+    events = EventLog(archive.root)
+    thresholds = {s.name: s.min_score for s in cfg.stages}
+    recorder = _Recorder(evaluator, events, thresholds)
+    cfg_dict = asdict(cfg)
+    events.emit("run_start", resumed=bool(archive.candidates), iteration=archive.iteration, config=cfg_dict)
+
+    def checkpoint() -> None:
+        archive.save()
+        if on_iteration is not None:
+            try:
+                on_iteration(archive)
+            except Exception as exc:  # noqa: BLE001 — a report failure must not stop the search
+                log(f"on_iteration hook failed: {exc}")
 
     if not archive.candidates:
-        await _evaluate_seed(seed, evaluator, archive, cfg, log)
+        await _evaluate_seed(seed, recorder, archive, cfg, log, events)
+        checkpoint()
 
     seed_size = int(archive.reference.get("size", seed.size()))
 
@@ -112,7 +155,10 @@ async def evolve(seed: Genome, evaluator: Evaluator, mutator: Mutator, out_dir: 
             ledger=archive.ledger(last=20),
         )
         entry: dict = {"iteration": it, "parent": parent.id, "island": island}
+        events.emit("iteration_start", iteration=it, island=island, parent=parent.id, pick=archive.last_pick,
+                    parent_fitness=parent.fitness, inspirations=[c.id for c, _ in ctx.inspirations])
 
+        proposal = None
         try:
             proposal = await mutator(parent_genome, ctx)
             entry["summary"] = proposal.summary
@@ -123,16 +169,20 @@ async def evolve(seed: Genome, evaluator: Evaluator, mutator: Mutator, out_dir: 
         except Exception as exc:  # noqa: BLE001 — a failed proposal is one lost iteration
             child, reason = None, f"mutator error: {exc}"
             entry.setdefault("summary", "")
+        _log_mutation(events, it, mutator, proposal, parent_genome, child)
 
         if child is None or reason:
             entry.update(outcome=INVALID, reason=reason)
             archive.log(entry)
+            events.emit("invalid", iteration=it, parent=parent.id, reason=reason)
             log(f"[{it}] invalid from {parent.id}: {reason}")
             archive.iteration = it + 1
-            archive.save()
+            events.emit("iteration_end", iteration=it, outcome=INVALID)
+            checkpoint()
             continue
 
-        results, passed = await run_cascade(evaluator, child, cfg.stages)
+        recorder.candidate, recorder.iteration = archive.next_id(), it
+        results, passed = await run_cascade(recorder, child, cfg.stages)
         last = list(results)[-1]
         score = results[last].score
         cand = Candidate(
@@ -144,10 +194,23 @@ async def evolve(seed: Genome, evaluator: Evaluator, mutator: Mutator, out_dir: 
         )
         if passed:
             cand.fitness = fitness(score, cand.size, seed_size, cfg.size_penalty)
+        champion_before = archive.champion
         archive.add(cand, child)
+        events.emit("candidate", iteration=it, candidate=cand.id, parent=parent.id, island=island,
+                    status=cand.status, stage_scores=cand.stage_scores, fitness=cand.fitness,
+                    size=cand.size, size_delta=cand.size - parent.size, growth_over_seed=cand.size - seed_size,
+                    penalty=(score - cand.fitness) if cand.fitness is not None else None,
+                    summary=cand.summary, cost_usd=cand.cost_usd, fingerprint=cand.fingerprint,
+                    place=archive.last_place)
 
         outcome = cand.status
-        if passed and await _maybe_promote(cand, child, evaluator, archive, cfg):
+        promoted, why = (False, "did not clear every stage") if not passed else \
+            await _maybe_promote(cand, child, recorder, archive, cfg)
+        if passed:
+            events.emit("promotion", iteration=it, candidate=cand.id, promoted=promoted, reason=why,
+                        champion_before=champion_before, champion_after=archive.champion,
+                        fitness=cand.fitness, holdout=cand.holdout)
+        if promoted:
             outcome = "champion"
         parent_fit = parent.fitness or 0.0
         entry.update(
@@ -164,16 +227,35 @@ async def evolve(seed: Genome, evaluator: Evaluator, mutator: Mutator, out_dir: 
 
         archive.iteration = it + 1
         if archive.iteration % max(1, cfg.migration_interval) == 0:
-            archive.migrate()
-        archive.save()
+            events.emit("migration", iteration=it, moves=archive.migrate())
+        events.emit("iteration_end", iteration=it, outcome=outcome, candidate=cand.id)
+        checkpoint()
 
+    events.emit("run_end", iteration=archive.iteration, champion=archive.champion)
     return archive
 
 
-async def _evaluate_seed(seed: Genome, evaluator: Evaluator, archive: Archive,
-                         cfg: EvolveConfig, log: Log) -> None:
+def _log_mutation(events: EventLog, it: int, mutator, proposal: Proposal | None,
+                  parent: Genome, child: Genome | None) -> None:
+    prompt = getattr(mutator, "last_prompt", "")
+    paths = {
+        "prompt": events.artifact(it, "prompt.md", prompt) if prompt else None,
+        "response": events.artifact(it, "response.md", proposal.raw) if proposal and proposal.raw else None,
+        "diff": events.artifact(it, "diff.patch", genome_diff(parent, child)) if child is not None else None,
+    }
+    events.emit(
+        "mutation", iteration=it, summary=proposal.summary if proposal else "",
+        edits=[{"path": e.path, "create": not e.search, "removed_chars": len(e.search),
+                "added_chars": len(e.replace)} for e in (proposal.edits if proposal else [])],
+        cost_usd=getattr(mutator, "last_cost_usd", None), artifacts=paths,
+    )
+
+
+async def _evaluate_seed(seed: Genome, evaluator: _Recorder, archive: Archive,
+                         cfg: EvolveConfig, log: Log, events: EventLog) -> None:
     # The baseline runs every stage regardless of thresholds: it is the
     # yardstick, and the loop needs a full train score to compare against.
+    evaluator.candidate, evaluator.iteration = archive.next_id(), -1
     results, _ = await run_cascade(evaluator, seed, cfg.stages, stop_early=False)
     last = list(results)[-1]
     archive.reference = {"size": float(seed.size()), "cost_usd": _metrics(results).get("cost_usd", 0.0)}
@@ -194,19 +276,23 @@ async def _evaluate_seed(seed: Genome, evaluator: Evaluator, archive: Archive,
     archive.set_champion(cand.id)
     archive.log({"iteration": -1, "candidate": cand.id, "outcome": "seed", "summary": "seed",
                  "score": results[last].score, "fitness": cand.fitness, "holdout": cand.holdout})
-    archive.save()
+    events.emit("seed", candidate=cand.id, stage_scores=cand.stage_scores, fitness=cand.fitness,
+                holdout=cand.holdout, size=cand.size, cost_usd=cand.cost_usd, reference=archive.reference,
+                islands=archive.num_islands, fingerprint=cand.fingerprint)
     log(f"[seed] {cand.id}: {last}={results[last].score:.3f}"
         + (f" holdout={cand.holdout:.3f}" if cand.holdout is not None else ""))
 
 
 async def _maybe_promote(cand: Candidate, genome: Genome, evaluator: Evaluator,
-                         archive: Archive, cfg: EvolveConfig) -> bool:
+                         archive: Archive, cfg: EvolveConfig) -> tuple[bool, str]:
+    """Returns (promoted, why), the why in words a report can show as is."""
     champ = archive.candidates.get(archive.champion or "")
     if champ is not None and (cand.fitness or 0.0) <= (champ.fitness or 0.0):
-        return False
+        return False, f"fitness {cand.fitness:.3f} does not beat champion {champ.id} ({champ.fitness:.3f})"
     if cfg.holdout:
         cand.holdout = (await evaluator.evaluate(genome, cfg.holdout)).score
         if champ is not None and cand.holdout <= (champ.holdout or 0.0) + cfg.holdout_margin:
-            return False
+            return False, (f"held-out {cand.holdout:.3f} does not beat champion {champ.id} "
+                           f"({champ.holdout or 0.0:.3f}) by more than {cfg.holdout_margin}")
     archive.set_champion(cand.id)
-    return True
+    return True, "beat the champion on train fitness" + (" and on held-out" if cfg.holdout else "")

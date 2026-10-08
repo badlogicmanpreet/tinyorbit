@@ -76,7 +76,7 @@
     </div>
   </div>
 
-  <p class="meta">tinyorbit, branch <code>feat/self-evolve</code> · <code>src/tinyorbit/evolve/</code> (~1,300 lines) and <code>bench/</code> (evaluator, scoring, splits) · 155 tests, no network · October 2026</p>
+  <p class="meta">tinyorbit, branch <code>feat/self-evolve</code> · <code>src/tinyorbit/evolve/</code> (~1,300 lines) and <code>bench/</code> (evaluator, scoring, splits) · 158 tests, no network · October 2026</p>
 </section>
 
 <!-- ───────────────────────────── 0 ───────────────────────────── -->
@@ -601,6 +601,7 @@ uv run python -m tinyorbit.evolve run --out bench/logs/evo-1 --seed bench/logs/g
     --iterations 10 --islands 2 --rng-seed 0
 
 uv run python -m tinyorbit.evolve show --out bench/logs/evo-1     # leaderboard
+open bench/logs/evo-1/report.html                                # the run, explained
 diff -ru bench/logs/g0 bench/logs/evo-1/champion                 # what actually changed</code></pre>
 
 <h3>7.3 What one iteration does, concretely</h3>
@@ -613,12 +614,16 @@ diff -ru bench/logs/g0 bench/logs/evo-1/champion                 # what actually
   <li>0.788 &gt; champion's 0.70 → spend the held-out stage: 7/10 against the champion's 6/10 with margin 0.1. 0.7 &gt; 0.6 + 0.1 is false, so no promotion. It stays pooled, a parent candidate for later. Ledger: <i>pooled, delta +0.088</i>.</li>
   <li><code>archive.json</code> is written. Iteration 5 will trigger ring migration.</li>
 </ol>
+<p>Every one of those steps is also an event in <code>events.jsonl</code>: <code>iteration_start</code> (island, parent, pick mode, inspirations), <code>mutation</code> (summary, edits, cost, paths to the prompt, answer and diff), <code>stage_start</code>/<code>stage_end</code> (score, gate, minutes, cost, per-task verdicts, failures, run directory), <code>candidate</code> (fitness, size penalty, grid cell and who held it), <code>promotion</code> (yes or no, and why), <code>migration</code> and <code>iteration_end</code>. <code>report.py</code> replays that log into <code>report.html</code>, written for a reader who was not watching.</p>
 
 <h3>7.4 What lands on disk</h3>
 <div class="two">
 <pre><code>bench/logs/evo-1/            # the search
   archive.json               # grid, candidates, champion
   ledger.jsonl               # one line per attempt
+  events.jsonl               # every step, as it happens
+  iterations/NNNN/           # mutator prompt, answer, diff
+  report.html                # rewritten each iteration
   genomes/g0000 … gNNNN/     # every variant
   champion/                  # ship this</code></pre>
 <pre><code>bench/logs/evo-&lt;fp&gt;-train-&lt;cfg&gt;/   # one stage run
@@ -712,6 +717,7 @@ bench/.venv/bin/python bench/run.py --tasks ... --genome bench/logs/evo-1/champi
   <tr><td><code>run</code></td><td><code>--out DIR</code> (resumes if present) · <code>--seed DIR</code> · <code>--evaluator mod:factory|file.py:factory</code> · <code>--arg k=v</code> · <code>--iterations 10</code> · <code>--stages train</code> (e.g. <code>smoke:0.67,train</code>) · <code>--holdout NAME</code> · <code>--holdout-margin 0.0</code> · <code>--size-penalty 0.01</code> · <code>--islands 2</code> · <code>--rng-seed 0</code> · <code>--model claude-opus-5</code> · <code>--provider</code> · <code>--effort</code></td></tr>
   <tr><td><code>reflect</code></td><td><code>--transcript FILE</code> · <code>--genome DIR</code> · <code>--outcome</code> · <code>--feedback</code> · <code>--source</code> · model flags</td></tr>
   <tr><td><code>show</code></td><td><code>--out DIR</code>: candidates sorted by fitness, champion starred</td></tr>
+  <tr><td><code>report</code></td><td><code>--out DIR</code> · <code>--html FILE</code>: replay <code>events.jsonl</code> into a self-contained HTML report (story, score chart, family tree, island grids, every attempt)</td></tr>
 </table>
 
 <h3>main.py and bench/run.py</h3>
@@ -735,6 +741,8 @@ bench/.venv/bin/python bench/run.py --tasks ... --genome bench/logs/evo-1/champi
   <tr><td><code>evolve/evaluate.py</code></td><td><code>Evaluator</code> protocol, <code>EvalResult</code>, <code>Stage</code>, cascade, evaluator loading</td></tr>
   <tr><td><code>evolve/archive.py</code></td><td>Candidates, MAP-Elites grid, islands, parent sampling, migration, persistence</td></tr>
   <tr><td><code>evolve/loop.py</code></td><td>The driver: seeding, guards, fitness, promotion, ledger, checkpoints</td></tr>
+  <tr><td><code>evolve/events.py</code></td><td>Append-only <code>events.jsonl</code>, per-iteration artifacts, genome diffs</td></tr>
+  <tr><td><code>evolve/report.py</code></td><td>Replays a run directory into a self-contained HTML report</td></tr>
   <tr><td><code>evolve/llm.py</code></td><td><code>Complete</code> seam: any provider as <code>async (system, user) → str</code>, cost tracked</td></tr>
   <tr><td><code>evolve/__main__.py</code></td><td>CLI</td></tr>
   <tr><td><code>bench/evolve_eval.py</code></td><td>SWE-bench evaluator: stages to splits, memoised runs, failure reports</td></tr>

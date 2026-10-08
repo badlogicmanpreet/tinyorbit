@@ -1,4 +1,4 @@
-"""CLI for the self-evolving layer: seed, run, reflect, show."""
+"""CLI for the self-evolving layer: seed, run, reflect, show, report."""
 
 from __future__ import annotations
 
@@ -59,10 +59,17 @@ def cmd_run(args: argparse.Namespace) -> int:
     )
     evaluator = load_evaluator(args.evaluator, _kv(args.arg))
 
+    out = Path(args.out)
+
+    def refresh_report(_archive: Archive) -> None:
+        from tinyorbit.evolve.report import write_report
+        write_report(out)
+
     async def main() -> Archive:
         provider, cost, complete = _complete(args)
         try:
-            return await evolve(seed, evaluator, LLMMutator(complete), Path(args.out), cfg)
+            return await evolve(seed, evaluator, LLMMutator(complete, cost=cost, model=args.model), out, cfg,
+                                on_iteration=refresh_report)
         finally:
             print(f"mutator: {cost.summary(args.model)}", file=sys.stderr)
             await provider.close()
@@ -71,6 +78,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     champ = archive.candidates[archive.champion] if archive.champion else None
     if champ:
         print(f"champion {champ.id}: fitness={champ.fitness} holdout={champ.holdout} → {archive.root / 'champion'}")
+    refresh_report(archive)
+    print(f"report: {out / 'report.html'}")
     return 0
 
 
@@ -104,6 +113,13 @@ def cmd_show(args: argparse.Namespace) -> int:
         hold = f"{c.holdout:.3f}" if c.holdout is not None else "  -  "
         star = "*" if c.id == archive.champion else " "
         print(f"{star}{c.id}  {c.status:8}  fit={fit} hold={hold} size={c.size:6}  ← {c.parent or '-':6} {c.summary}")
+    return 0
+
+
+def cmd_report(args: argparse.Namespace) -> int:
+    from tinyorbit.evolve.report import write_report
+
+    print(write_report(Path(args.out), Path(args.html) if args.html else None))
     return 0
 
 
@@ -147,6 +163,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("show", help="summarize a run directory")
     p.add_argument("--out", required=True)
     p.set_defaults(fn=cmd_show)
+
+    p = sub.add_parser("report", help="render a run directory as a self-contained HTML page")
+    p.add_argument("--out", required=True, help="run directory")
+    p.add_argument("--html", default=None, help="where to write it (default: <out>/report.html)")
+    p.set_defaults(fn=cmd_report)
     return ap
 
 

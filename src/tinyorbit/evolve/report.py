@@ -85,6 +85,7 @@ class Run:
     config: dict
     running: dict | None          # the stage_start still waiting for its stage_end
     finished: bool
+    budget_stop: dict | None = None
 
     @property
     def stages(self) -> list[str]:
@@ -115,6 +116,7 @@ def load(root: Path) -> Run:
     config: dict = {}
     running: dict | None = None
     finished = False
+    budget_stop: dict | None = None
 
     def step(it: int) -> Step:
         return steps.setdefault(it, Step(it))
@@ -125,6 +127,8 @@ def load(root: Path) -> Run:
             config, finished = ev.get("config", {}), False
         elif kind == "run_end":
             finished, running = True, None
+        elif kind == "budget_stop":
+            budget_stop = ev
         elif kind == "stage_start":
             running = ev
         elif kind == "stage_end":
@@ -147,8 +151,8 @@ def load(root: Path) -> Run:
             step(it).migration = ev.get("moves", [])
         elif kind == "iteration_end":
             step(it).end = ev
-    finished = finished and archive.iteration >= int(config.get("iterations", 0) or 0)
-    return Run(root, archive, events, dict(sorted(steps.items())), config, running, finished)
+    finished = finished and (budget_stop is not None or archive.iteration >= int(config.get("iterations", 0) or 0))
+    return Run(root, archive, events, dict(sorted(steps.items())), config, running, finished, budget_stop)
 
 
 def lineage(run: Run, cid: str | None) -> list[str]:
@@ -562,13 +566,19 @@ def cards(run: Run) -> str:
     if run.holdout:
         items += [(f"original on {stage_name(run.holdout)}", pct(seed.holdout) if seed else "–"),
                   (f"champion on {stage_name(run.holdout)}", pct(champ.holdout) if champ else "–")]
-    items += [("champion", champ.id if champ else "–"), ("spent so far", money(costs["total"]))]
+    budget = run.config.get("budget_usd")
+    items += [("champion", champ.id if champ else "–"),
+              ("spent so far" + (f" (cap {money(budget)})" if budget else ""), money(costs["total"]))]
     return '<div class="cards">' + "".join(
         f'<div class="card"><div class="num">{esc(v)}</div><div class="muted">{esc(k)}</div></div>' for k, v in items
     ) + "</div>"
 
 
 def status_line(run: Run) -> str:
+    if run.finished and run.budget_stop:
+        b = run.budget_stop
+        return (f'<div class="status done">Finished early to stay within budget: spent {money(b["spent_usd"])} '
+                f'of {money(b["budget_usd"])}, and one more attempt could have cost up to {money(b["reserve_usd"])}.</div>')
     if run.finished:
         return '<div class="status done">Finished.</div>'
     last_ts = run.events[-1]["ts"] if run.events else "never"

@@ -409,3 +409,25 @@ def test_report_handles_a_run_that_just_started(tmp_path):
     page = render(tmp_path)
     assert "Running now: <b>easy safety check</b> for the original" in page
     assert 'http-equiv="refresh"' in page
+
+
+async def test_budget_stops_before_an_attempt_that_could_overshoot(tmp_path):
+    from tinyorbit.evolve.report import render
+
+    class Priced(FakeEvaluator):
+        async def evaluate(self, genome, stage):
+            result = await super().evaluate(genome, stage)
+            result.cost_usd = 10.0
+            return result
+
+    cfg = loop_config(4)
+    cfg.budget_usd = 45.0          # seed spends 30 (3 stages); one attempt could cost 30 more
+    mutator, _ = scripted_mutator(PROPOSALS)
+    archive = await evolve(seed_genome(), Priced(), mutator, tmp_path / "run", cfg, log=lambda _: None)
+    assert archive.iteration == 0
+    assert "Finished early to stay within budget" in render(tmp_path / "run")
+    # Resumed with more money; spending carries over from the log: seed 30, g0001 30 (all
+    # three stages), the invalid edit 0, BROKEN 10 (stopped at smoke) = 70, and 70 + 30 > 95.
+    cfg.budget_usd = 95.0
+    archive = await evolve(seed_genome(), Priced(), mutator, tmp_path / "run", cfg, log=lambda _: None)
+    assert archive.iteration == 3

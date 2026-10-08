@@ -88,7 +88,9 @@ def render_prompt(task: dict) -> str:
 def start_container(name: str, image: str, api_key: str | None, dry: bool) -> None:
     sh(["docker", "rm", "-f", name], dry=dry, check=False, capture=True)
     sh(["docker", "pull", "--platform", PLATFORM, image], dry=dry)
-    env = ["-e", f"ANTHROPIC_API_KEY={api_key}"] if api_key else []
+    # Name only, no value: docker reads it from our environment, so the key never
+    # appears on a command line (ps, shell history) or in the run log.
+    env = ["-e", "ANTHROPIC_API_KEY"] if api_key else []
     sh(["docker", "run", "-d", "--name", name, "--platform", PLATFORM, *env, "-w", "/testbed", image, "sleep", "infinity"], dry=dry, capture=True)
 
 

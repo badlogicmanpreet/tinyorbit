@@ -56,6 +56,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         size_penalty=args.size_penalty,
         num_islands=args.islands,
         rng_seed=args.rng_seed,
+        budget_usd=args.budget,
     )
     evaluator = load_evaluator(args.evaluator, _kv(args.arg))
 
@@ -148,6 +149,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--size-penalty", type=float, default=0.01)
     p.add_argument("--islands", type=int, default=2)
     p.add_argument("--rng-seed", type=int, default=0)
+    p.add_argument("--budget", type=float, default=None, metavar="USD",
+                   help="stop before an attempt whose worst-case cost would pass this total")
     model_flags(p)
     p.set_defaults(fn=cmd_run)
 

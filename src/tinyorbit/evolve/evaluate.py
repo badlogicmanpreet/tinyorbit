@@ -39,6 +39,7 @@ class EvalResult:
     metrics: dict[str, float] = field(default_factory=dict)
     failures: list[Failure] = field(default_factory=list)
     cost_usd: float = 0.0
+    info: dict[str, Any] = field(default_factory=dict)   # provenance for the event log, e.g. run ids
 
 
 @dataclass(frozen=True)

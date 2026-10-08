@@ -64,6 +64,9 @@ class Archive:
         self.champion: str | None = None
         self.iteration = 0
         self.reference: dict[str, float] = {}        # seed size/cost, the feature yardstick
+        # Last decisions, read by the loop for the event log (not persisted).
+        self.last_pick = ""                          # "exploit" | "explore" | "best"
+        self.last_place: dict = {}
 
     # ── persistence ──────────────────────────────────────────────────────────
 
@@ -119,6 +122,7 @@ class Archive:
         """Record a candidate. Returns True if it took (or kept) a grid cell."""
         self.candidates[candidate.id] = candidate
         genome.save(self.root / "genomes" / candidate.id)
+        self.last_place = {}
         if candidate.status != POOLED:
             return False
         return self._place(candidate.island, candidate)
@@ -126,10 +130,11 @@ class Archive:
     def _place(self, island: int, candidate: Candidate) -> bool:
         cell = self._cell(island, candidate)
         incumbent = self.candidates.get(self.grid.get(cell, ""))
-        if incumbent is None or _better(candidate, incumbent):
+        took = incumbent is None or _better(candidate, incumbent)
+        self.last_place = {"cell": cell, "placed": took, "incumbent": incumbent.id if incumbent else None}
+        if took:
             self.grid[cell] = candidate.id
-            return True
-        return False
+        return took
 
     def _bin(self, value: float, ref: float) -> int:
         # Bins span 0..2x the seed's value; the seed itself lands mid-range.
@@ -172,12 +177,15 @@ class Archive:
         """Exploit an elite, explore the island at random, or take the overall best."""
         r = self.rng.random()
         if r < exploit and (elites := self.elites(island)):
+            self.last_pick = "exploit"
             return self.rng.choice(elites)
         if r < exploit + explore and (pool := self.pool(island)):
+            self.last_pick = "explore"
             return self.rng.choice(pool)
         best = self.best() or self.best(island)
         if best is None:
             raise RuntimeError("archive has no pooled candidate to mutate")
+        self.last_pick = "best"
         return best
 
     def inspirations(self, parent: Candidate, k: int = 2) -> list[Candidate]:
@@ -186,10 +194,11 @@ class Archive:
         others.sort(key=lambda c: c.fitness or 0.0, reverse=True)
         return others[:k]
 
-    def migrate(self) -> None:
-        """Ring migration: each island's best joins the next island."""
+    def migrate(self) -> list[dict]:
+        """Ring migration: each island's best joins the next island. Returns the moves."""
+        moves: list[dict] = []
         if self.num_islands < 2:
-            return
+            return moves
         for island in range(self.num_islands):
             best = self.best(island)
             if best is None:
@@ -198,7 +207,10 @@ class Archive:
             members = self.migrants.setdefault(target, [])
             if best.id not in members and best.island != target:
                 members.append(best.id)
-                self._place(target, best)
+                placed = self._place(target, best)
+                moves.append({"candidate": best.id, "from": island, "to": target, **self.last_place,
+                              "placed": placed})
+        return moves
 
     def set_champion(self, cid: str) -> None:
         self.champion = cid

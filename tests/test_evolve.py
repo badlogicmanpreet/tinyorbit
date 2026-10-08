@@ -352,3 +352,60 @@ async def test_llm_mutator_wraps_complete():
 
     proposal = await LLMMutator(complete)(Genome(), MutationContext(Candidate("g", None, 0, 0, "f", 0)))
     assert proposal.edits[0].path == "memory.md"
+
+
+# ── event log + report ───────────────────────────────────────────────────────
+
+async def test_every_step_is_in_the_event_log(tmp_path):
+    from tinyorbit.evolve.events import EventLog
+
+    mutator, _ = scripted_mutator(PROPOSALS)
+    seen: list[int] = []
+    cfg = loop_config(4)
+    cfg.num_islands, cfg.migration_interval = 2, 2
+    await evolve(seed_genome(), FakeEvaluator(), mutator, tmp_path / "run", cfg, log=lambda _: None,
+                 on_iteration=lambda a: seen.append(a.iteration))
+    events = EventLog(tmp_path / "run").read()
+    kinds = [e["kind"] for e in events]
+    assert kinds[0] == "run_start" and kinds[-1] == "run_end" and "seed" in kinds
+    assert kinds.count("iteration_start") == kinds.count("iteration_end") == 4
+    assert kinds.count("stage_start") == kinds.count("stage_end")
+    assert seen == [0, 1, 2, 3, 4]                      # after the seed, then after every iteration
+    by_kind = lambda k: [e for e in events if e["kind"] == k]          # noqa: E731
+    assert {e["pick"] for e in by_kind("iteration_start")} <= {"exploit", "explore", "best"}
+    assert by_kind("invalid")[0]["reason"] and by_kind("invalid")[0]["iteration"] == 1
+    smoke_fail = [e for e in by_kind("stage_end") if e["stage"] == "smoke" and e["passed"] is False]
+    assert smoke_fail and smoke_fail[0]["candidate"] == "g0002"
+    promo = by_kind("promotion")
+    assert promo[0]["promoted"] and promo[0]["champion_after"] == "g0001"
+    assert any(not p["promoted"] and "held-out" in p["reason"] for p in promo)     # OVERFIT kept out
+    assert by_kind("migration")                                                     # every 2 iterations
+    first = by_kind("mutation")[0]
+    diff = (tmp_path / "run" / first["artifacts"]["diff"]).read_text()
+    assert "+- Keep replies brief. Always run the tests" in diff
+    assert by_kind("candidate")[0]["place"]["cell"].count("|") == 2
+
+
+async def test_report_renders_a_finished_run(tmp_path):
+    from tinyorbit.evolve.report import write_report
+
+    mutator, _ = scripted_mutator(PROPOSALS)
+    await evolve(seed_genome(), FakeEvaluator(), mutator, tmp_path / "run", loop_config(4), log=lambda _: None)
+    page = write_report(tmp_path / "run").read_text()
+    for needle in ("The story in one minute", "Family tree", "Islands and niches", "Island 0",
+                   "verify before done", "new champion", "easy safety check", "unseen problems",
+                   "Finished.", "Promoted:", "<svg", "+- Keep replies brief. Always run the tests"):
+        assert needle in page, needle
+    assert "<script" not in page and "http-equiv" not in page          # static, no refresh when done
+
+
+def test_report_handles_a_run_that_just_started(tmp_path):
+    from tinyorbit.evolve.events import EventLog
+    from tinyorbit.evolve.report import render
+
+    log = EventLog(tmp_path)
+    log.emit("run_start", resumed=False, iteration=0, config={"iterations": 5, "stages": [{"name": "smoke"}]})
+    log.emit("stage_start", iteration=-1, candidate="g0000", stage="smoke", fingerprint="x")
+    page = render(tmp_path)
+    assert "Running now: <b>easy safety check</b> for the original" in page
+    assert 'http-equiv="refresh"' in page

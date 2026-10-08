@@ -37,7 +37,7 @@ export ANTHROPIC_API_KEY=...           # or `ant auth login`
 uv run python main.py                              # interactive REPL
 uv run python main.py "explain the bootstrap"      # REPL with a first prompt
 uv run python main.py --print "list the python files here"   # headless, streams to stdout
-uv run pytest                                      # 155 tests, no network
+uv run pytest                                      # 158 tests, no network
 ```
 
 Useful flags: `--model`, `--permission-mode {default,acceptEdits,bypassPermissions}`, `--allow 'Bash(git *)'`, `--allowed-tools 'Read,Grep'`, `--disallowed-tools 'Bash,mcp__*'`, `--effort xhigh`, `--max-turns 20`, `--no-fallbacks`, `--thinking-display summarized`, `--resume <id>` (with `--fork` to branch it). Inside the REPL: `/cost`, `/clear`, `/mode`, `/exit`. Ctrl+C mid-turn interrupts the turn; at the prompt it exits.
@@ -169,10 +169,11 @@ uv run python -m tinyorbit.evolve seed runs/g0              # generation 0 = tod
 uv run python -m tinyorbit.evolve run --seed runs/g0 --out runs/evo1 \
     --evaluator mypkg.evals:make --stages smoke:0.2,train --holdout holdout --iterations 20
 uv run python -m tinyorbit.evolve show --out runs/evo1
+uv run python -m tinyorbit.evolve report --out runs/evo1   # runs/evo1/report.html
 uv run python main.py --genome runs/evo1/champion "fix the failing test"
 ```
 
-An evaluator is any object with `async evaluate(genome, stage) -> EvalResult(score, metrics, failures)`, loaded from `module:factory` or `file.py:factory`, so benchmarks stay out of the core. `bench/evolve_eval.py` is the SWE-bench one (see [Benchmarking](#benchmarking)). Without `--genome` nothing in this package is imported, and the seed genome reproduces the default prompt and tool schemas byte for byte (a test enforces it).
+An evaluator is any object with `async evaluate(genome, stage) -> EvalResult(score, metrics, failures)`, loaded from `module:factory` or `file.py:factory`, so benchmarks stay out of the core. `bench/evolve_eval.py` is the SWE-bench one (see [Benchmarking](#benchmarking)). Every step of a run is appended to `events.jsonl`: which island and parent were picked and why, the mutator's prompt, answer and diff (under `iterations/NNNN/`), each stage's start, end, score, cost and failures, the grid cell a child took, every promotion decision and migration. `report.py` replays that log into one self-contained `report.html` (inline SVG, no scripts) with a plain-language story, the score per attempt, the family tree, the island grids and every attempt in detail. `run` rewrites it after each iteration, and while a run is going the page refreshes itself and names the stage in progress. Without `--genome` nothing in this package is imported, and the seed genome reproduces the default prompt and tool schemas byte for byte (a test enforces it).
 
 ## Testing
 

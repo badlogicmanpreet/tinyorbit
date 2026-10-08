@@ -56,6 +56,7 @@ class EvolveConfig:
     migration_interval: int = 5
     feature_bins: int = 4
     rng_seed: int = 0
+    budget_usd: float | None = None     # stop before an attempt that could overshoot this
 
 
 def fitness(score: float, size: int, seed_size: int, penalty: float) -> float:
@@ -145,6 +146,14 @@ async def evolve(seed: Genome, evaluator: Evaluator, mutator: Mutator, out_dir: 
     seed_size = int(archive.reference.get("size", seed.size()))
 
     while archive.iteration < cfg.iterations:
+        if cfg.budget_usd is not None:
+            spent, reserve = spend(events)
+            if spent + reserve > cfg.budget_usd:
+                events.emit("budget_stop", iteration=archive.iteration, spent_usd=spent,
+                            reserve_usd=reserve, budget_usd=cfg.budget_usd)
+                log(f"budget: spent ${spent:.2f}, one more attempt could cost ${reserve:.2f}, "
+                    f"cap ${cfg.budget_usd:.2f}; stopping")
+                break
         it = archive.iteration
         island = it % archive.num_islands
         parent = archive.sample_parent(island)
@@ -233,6 +242,27 @@ async def evolve(seed: Genome, evaluator: Evaluator, mutator: Mutator, out_dir: 
 
     events.emit("run_end", iteration=archive.iteration, champion=archive.champion)
     return archive
+
+
+def spend(events: EventLog) -> tuple[float, float]:
+    """(USD spent so far, worst cost of one attempt seen so far).
+
+    Read back from the event log, so a resumed run counts what earlier sessions
+    spent. Reused (cached) stage results cost nothing now. The seed ran every
+    stage, so its bill is the first worst-case estimate (a pre-flight budget
+    check rather than a hard stop mid-stage, which would waste the stage).
+    """
+    per_step: dict[int, float] = {}
+    for ev in events.read():
+        if ev["kind"] == "stage_end" and not (ev.get("info") or {}).get("cached"):
+            usd = float(ev.get("cost_usd") or 0.0)
+        elif ev["kind"] == "mutation":
+            usd = float(ev.get("cost_usd") or 0.0)
+        else:
+            continue
+        it = ev.get("iteration", -1)
+        per_step[it] = per_step.get(it, 0.0) + usd
+    return sum(per_step.values()), max(per_step.values(), default=0.0)
 
 
 def _log_mutation(events: EventLog, it: int, mutator, proposal: Proposal | None,

@@ -396,16 +396,37 @@ async def test_every_step_is_in_the_event_log(tmp_path):
 
 
 async def test_report_renders_a_finished_run(tmp_path):
-    from tinyorbit.evolve.report import write_report
+    import json as _json
+    import re
+
+    from tinyorbit.evolve.report import _PRE, write_report
 
     mutator, _ = scripted_mutator(PROPOSALS)
     await evolve(seed_genome(), FakeEvaluator(), mutator, tmp_path / "run", loop_config(4), log=lambda _: None)
     page = write_report(tmp_path / "run").read_text()
-    for needle in ("The story in one minute", "Family tree", "Islands and niches", "Island 0",
+    for needle in ("Why evolve the harness?", "No manual work is needed", "In nature", "Darwin",
+                   "Watch it happen", "The story in one minute", "Family tree", "Islands and niches", "Island A",
                    "verify before done", "new champion", "easy safety check", "unseen problems",
                    "Finished.", "Promoted:", "<svg", "+- Keep replies brief. Always run the tests"):
         assert needle in page, needle
-    assert "<script" not in page and "http-equiv" not in page          # static, no refresh when done
+    assert "http-equiv" not in page                                     # no refresh once finished
+    assert "var rough=" in page and "<script src" not in page           # one offline file, rough.js inlined
+    assert "Glossary" not in page and "AI coding agent" not in page
+    assert not re.search("[\u2014\u2013]", _PRE.sub("", page))          # house style: commas, not dashes
+    # the animated story is in the same page, its scenes computed from the run
+    data = _json.loads(re.search(r'id="data">(.*?)</script>', page, re.S).group(1).replace("<\\/", "</"))
+    captions = [s["caption"] for s in data["scenes"]]
+    assert captions[0] == "Every species starts somewhere." and "g0001 is the new champion." in captions
+    assert "A mutation that does not work." in captions                 # the bad-quote edit
+    assert any(c.startswith("After 4 generations") for c in captions)
+    assert [n["id"] for n in data["nodes"]][:2] == ["g0000", "g0001"]
+
+
+def test_report_drops_dashes_outside_quoted_files():
+    from tinyorbit.evolve.report import no_dashes
+
+    page = "<p>idea \u2014 verify first</p><pre>keep \u2014 verbatim</pre><p>0.5\u20131.0</p>"
+    assert no_dashes(page) == "<p>idea, verify first</p><pre>keep \u2014 verbatim</pre><p>0.5, 1.0</p>"
 
 
 def test_report_handles_a_run_that_just_started(tmp_path):
@@ -440,21 +461,3 @@ async def test_budget_stops_before_an_attempt_that_could_overshoot(tmp_path):
     cfg.budget_usd = 95.0
     archive = await evolve(seed_genome(), Priced(), mutator, tmp_path / "run", cfg, log=lambda _: None)
     assert archive.iteration == 3
-
-
-async def test_story_scenes_follow_the_run(tmp_path):
-    import json as _json
-    import re
-
-    from tinyorbit.evolve.story import write_story
-
-    mutator, _ = scripted_mutator(PROPOSALS)
-    await evolve(seed_genome(), FakeEvaluator(), mutator, tmp_path / "run", loop_config(4), log=lambda _: None)
-    page = write_story(tmp_path / "run").read_text()
-    data = _json.loads(re.search(r'id="data">(.*?)</script>', page, re.S).group(1).replace("<\\/", "</"))
-    captions = [s["caption"] for s in data["scenes"]]
-    assert captions[0] == "Every species starts somewhere." and "g0001 is the new champion." in captions
-    assert "A mutation that does not work." in captions                 # the bad-quote edit
-    assert any(c.startswith("After 4 generations") for c in captions)
-    assert [n["id"] for n in data["nodes"]][:2] == ["g0000", "g0001"]
-    assert "In nature" in page and "Darwin" in page and "<script src" not in page   # one offline file

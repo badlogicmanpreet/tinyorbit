@@ -1,4 +1,4 @@
-"""CLI for the self-evolving layer: seed, run, reflect, show, report."""
+"""CLI for the self-evolving layer: seed, run, reflect, show, report, story."""
 
 from __future__ import annotations
 
@@ -124,6 +124,13 @@ def cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_story(args: argparse.Namespace) -> int:
+    from tinyorbit.evolve.story import write_story
+
+    print(write_story(Path(args.out), Path(args.html) if args.html else None))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="python -m tinyorbit.evolve")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -171,6 +178,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", required=True, help="run directory")
     p.add_argument("--html", default=None, help="where to write it (default: <out>/report.html)")
     p.set_defaults(fn=cmd_report)
+
+    p = sub.add_parser("story", help="render a run as an animated, plain-language explainer")
+    p.add_argument("--out", required=True, help="run directory")
+    p.add_argument("--html", default=None, help="where to write it (default: <out>/story.html)")
+    p.set_defaults(fn=cmd_story)
     return ap
 
 

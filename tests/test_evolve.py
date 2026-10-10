@@ -440,3 +440,21 @@ async def test_budget_stops_before_an_attempt_that_could_overshoot(tmp_path):
     cfg.budget_usd = 95.0
     archive = await evolve(seed_genome(), Priced(), mutator, tmp_path / "run", cfg, log=lambda _: None)
     assert archive.iteration == 3
+
+
+async def test_story_scenes_follow_the_run(tmp_path):
+    import json as _json
+    import re
+
+    from tinyorbit.evolve.story import write_story
+
+    mutator, _ = scripted_mutator(PROPOSALS)
+    await evolve(seed_genome(), FakeEvaluator(), mutator, tmp_path / "run", loop_config(4), log=lambda _: None)
+    page = write_story(tmp_path / "run").read_text()
+    data = _json.loads(re.search(r'id="data">(.*?)</script>', page, re.S).group(1).replace("<\\/", "</"))
+    captions = [s["caption"] for s in data["scenes"]]
+    assert captions[0] == "Every species starts somewhere." and "g0001 is the new champion." in captions
+    assert "A mutation that does not work." in captions                 # the bad-quote edit
+    assert any(c.startswith("After 4 generations") for c in captions)
+    assert [n["id"] for n in data["nodes"]][:2] == ["g0000", "g0001"]
+    assert "In nature" in page and "Darwin" in page and "<script src" not in page   # one offline file

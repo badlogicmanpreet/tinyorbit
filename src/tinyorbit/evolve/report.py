@@ -6,7 +6,7 @@ the analogy to nature and an animated replay for anyone (story.py), the score
 chart, family tree and island grids for an architect, and every prompt, diff
 and failure for whoever wants to audit a step.
 
-It is styled as pencil notes on paper. rough.js (vendored, MIT) redraws every
+It is styled as pencil notes on plain paper. rough.js (vendored, MIT) redraws every
 SVG shape and box by hand after load; without it the page still reads, with
 CSS borders (progressive enhancement). Everything is inlined, no network, so
 the page opens anywhere, survives being emailed, and can be committed.
@@ -617,13 +617,11 @@ def costs_table(run: Run) -> str:
 
 
 CSS = """
-:root{--hand:"Bradley Hand","Segoe Print","Chalkboard SE","Comic Sans MS",cursive;--ink:#2b2b2b;--paper:#fdfbf3;
---rule:#e1e8f0}
+:root{--hand:"Bradley Hand","Segoe Print","Chalkboard SE","Comic Sans MS",cursive;--ink:#2b2b2b;--paper:#fdfbf3}
 *{box-sizing:border-box}
 body{margin:0;font:15.5px/1.6 "Avenir Next","Segoe UI",-apple-system,Roboto,sans-serif;color:#2b2b2b;
-background:var(--paper) repeating-linear-gradient(transparent 0 31px,var(--rule) 31px 32px)}
-main{max-width:1120px;margin:0 auto;padding:30px 30px 80px 52px;position:relative}
-main::before{content:"";position:absolute;left:30px;top:0;bottom:0;border-left:2px solid #f0b4ae}
+background:var(--paper)}
+main{max-width:1120px;margin:0 auto;padding:30px 30px 80px}
 h1,h2,h3,h4,.hand{font-family:var(--hand);font-weight:normal}
 h1{font-size:42px;margin:0;line-height:1.2}
 .kicker{font-family:var(--hand);font-size:18px;color:#2f5d9e}

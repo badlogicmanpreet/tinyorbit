@@ -1,26 +1,29 @@
-"""Story — an animated, plain-language replay of an evolution run.
+"""Story, the animated, plain-language opening of the report.
 
-report.py is the full record; this page is the explainer. It turns the same
-run directory into a short sequence of scenes (pick a parent, mutate, test,
-select) played on one canvas: a family tree growing across two islands on the
-left, a test lab filling in pass/fail squares on the right, and one sentence
-of narration per scene. It opens with the analogy to evolution in nature.
+report.py is the full record; this module is its first section, the explainer.
+It turns a run into a short sequence of scenes (pick a parent, mutate, test,
+select) played on one canvas: a family tree growing across the islands on the
+left, a test lab filling in pass/fail squares on the right, and one sentence of
+narration per scene. Before it come the why, and the analogy to evolution in
+nature.
 
-The scenes are computed here from events.jsonl and embedded as JSON; a small
-inline script only plays them (data-driven animation), so the page stays a
-single file that works offline, with no libraries.
+The scenes are computed here from the replayed run and embedded as JSON; a
+small inline script only plays them (data-driven animation), so the report
+stays a single file that works offline. This module takes the Run that
+report.py loads and never imports report.py, so there is no import cycle.
 """
 
 from __future__ import annotations
 
 import html
 import json
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from tinyorbit.evolve.archive import INVALID
-from tinyorbit.evolve.report import Run, Step, cost_breakdown, load
 
-STORY = "story.html"
+if TYPE_CHECKING:
+    from tinyorbit.evolve.report import Run
+
 LANE_NAMES = "ABCDEFGH"
 STAGE_LABELS = {"smoke": "Easy check", "train": "Practice set", "holdout": "Unseen problems"}
 PICK_WORDS = {
@@ -35,7 +38,7 @@ def _short(text: str, limit: int = 150) -> str:
     return text if len(text) <= limit else text[: limit - 1].rsplit(" ", 1)[0] + "…"
 
 
-def _lane(island: int) -> str:
+def lane_name(island: int) -> str:
     return LANE_NAMES[island % len(LANE_NAMES)]
 
 
@@ -46,7 +49,7 @@ def _row(ev: dict, animate: bool) -> dict:
     gate = ev.get("min_score")
     result = f"{solved} of {total} solved"
     if gate:
-        result += " · passed" if ev.get("passed") else f" · needed {round(gate * total)}"
+        result += ", passed" if ev.get("passed") else f", needed {round(gate * total)}"
     return {"name": STAGE_LABELS.get(ev["stage"], ev["stage"]), "animate": animate, "result": result,
             "pass": ev.get("passed"), "tasks": [{"id": k, "ok": v == "resolved"} for k, v in tasks.items()]}
 
@@ -60,7 +63,7 @@ def _fraction(ev: dict | None) -> str:
     return f"{ev['score'] * 100:.0f}%"
 
 
-def build(run: Run) -> dict:
+def build(run: Run, costs: dict) -> dict:
     """Nodes of the family tree plus the ordered scenes that reveal them."""
     final, holdout = run.final_stage, run.holdout
     islands = max(1, run.archive.num_islands)
@@ -88,16 +91,18 @@ def build(run: Run) -> dict:
                        "migrations": list(migrations), "dur": dur})
 
     seed = run.seed
-    seed_step = run.steps.get(-1, Step(-1))
-    by_stage = {ev["stage"]: ev for ev in seed_step.stages}
+    seed_step = run.steps.get(-1)
+    by_stage = {ev["stage"]: ev for ev in (seed_step.stages if seed_step else [])}
+    lanes = [{"name": f"Island {lane_name(i)}", "y": lane_y(i), "h": lane_h} for i in range(islands)]
+    shape = {"islands": islands, "lanes": lanes, "width": width, "top": top, "height": top + 420 + 30}
     if seed is None:
         scene("The run has just started.", "Come back in a few minutes.")
-        return {"nodes": nodes, "scenes": scenes, "islands": islands, "lanes": [], "width": width}
+        return {"nodes": nodes, "scenes": scenes, **shape}
 
     scene("Every species starts somewhere.",
-          "Ours is the standard tinyorbit harness: the written instructions, notes and tool descriptions "
-          "the AI model reads before it starts coding. The model itself never changes. Only these "
-          "instructions will evolve.", dur=6500)
+          "Ours is the standard tinyorbit harness: the system prompt, memory, lessons, skills and tool "
+          "descriptions the harness hands the model before it starts work. The model itself never "
+          "changes. Only these artifacts will evolve.", dur=6500)
     add_node(id=seed.id, x=left - 20, y=top + 210, island=-1, label="original",
              score=_fraction(by_stage.get(final)), kind="seed", parent=None)
     rows = [_row(by_stage[s], True) for s in run.stages + ([holdout] if holdout else []) if s in by_stage]
@@ -118,7 +123,7 @@ def build(run: Run) -> dict:
         x = left + dx * (attempts.index(it) + 1) - 10
         island = st.start.get("island", it % islands)
         parent = st.start.get("parent", seed.id)
-        lane = _lane(island)
+        lane = lane_name(island)
         n = attempts.index(it) + 1
         scene(f"Generation {n}, island {lane}: choose a parent.",
               f"We pick {parent}: {PICK_WORDS.get(st.start.get('pick', ''), 'a member of the population')}.",
@@ -136,7 +141,7 @@ def build(run: Run) -> dict:
         stages = {ev["stage"]: ev for ev in st.stages}
         add_node(id=cid, x=x, y=lane_y(island), island=island, label=cid,
                  score=_fraction(stages.get(final)) or "stopped", kind=cand.get("status", "pooled"), parent=parent)
-        scene("Mutation: the AI editor rewrites part of the instructions.",
+        scene("Mutation: the AI editor rewrites part of the harness.",
               f"It studies the problems {parent} got wrong and proposes a change. Its idea: “{idea}”",
               focus=[cid], new=cid, parent=parent, dur=7000)
         rows = [_row(stages[s], True) for s in run.stages if s in stages]
@@ -174,15 +179,13 @@ def build(run: Run) -> dict:
         for move in st.migration:
             migrations.append({"id": move["candidate"], "to": move["to"], "x": nodes[index[move["candidate"]]]["x"],
                                "y": lane_y(move["to"])})
-            scene(f"Migration: {move['candidate']} travels to island {_lane(move['to'])}.",
+            scene(f"Migration: {move['candidate']} travels to island {lane_name(move['to'])}.",
                   "Now and then the best of one island joins the next, so a good idea can spread, "
                   "like animals crossing to a neighbouring island.", focus=[move["candidate"]], dur=5200)
 
-    scene(*_ending(run), lab={"title": "Where we ended", "summary": _summary(run), "tone": "win"},
+    scene(*_ending(run), lab={"title": "Where we ended", "summary": _summary(run, costs), "tone": "win"},
           focus=[champion] if champion else [], dur=12000)
-    lanes = [{"name": f"Island {_lane(i)}", "y": lane_y(i), "h": lane_h} for i in range(islands)]
-    return {"nodes": nodes, "scenes": scenes, "islands": islands, "lanes": lanes, "width": width,
-            "top": top, "height": top + 420 + 30}
+    return {"nodes": nodes, "scenes": scenes, **shape}
 
 
 def _champ_score(run: Run, cid: str | None, stage: str | None = None) -> str:
@@ -205,12 +208,12 @@ def _ending(run: Run) -> tuple[str, str]:
     seed, champ = run.seed, run.champion
     if champ is None or seed is None or champ.id == seed.id:
         return ("No offspring beat the original this time.",
-                "That is a result too: the current instructions are hard to improve with small changes.")
+                "That is a result too: the current harness is hard to improve with small changes.")
     return (f"After {sum(1 for i in run.steps if i >= 0)} generations, {champ.id} is the fittest.",
             f"It went from {_champ_score(run, seed.id)} to {_champ_score(run, champ.id)} on the practice problems.")
 
 
-def _summary(run: Run) -> list[str]:
+def _summary(run: Run, costs: dict) -> list[str]:
     seed, champ = run.seed, run.champion
     attempts = [s for i, s in run.steps.items() if i >= 0]
     kept = sum(1 for s in attempts if s.candidate and s.candidate.get("status") == "pooled")
@@ -224,29 +227,39 @@ def _summary(run: Run) -> list[str]:
     if total and total <= 20:
         lines.append(f"Caution: with only {total} problems per set, a gain of one or two can be luck. "
                      "Re-test the champion before trusting it.")
-    costs = cost_breakdown(run)
     lines.append(f"Total cost about ${costs['total']:,.0f}"
                  + (f", plus ${costs['cached']:,.0f} of earlier results reused here." if costs["cached"] else "."))
     return lines
 
 
-# ── page ─────────────────────────────────────────────────────────────────────
+# ── section ──────────────────────────────────────────────────────────────────
+
+WHY = """
+<p class="lead"><b>Why evolve the harness?</b> tinyorbit is a small agent SDK: the harness that turns a model
+into an agent. How well that agent does depends heavily on the harness artifacts: its system prompt, memory,
+lessons, skills and tool descriptions. Today those are tuned by hand: change a prompt, rerun a benchmark, read
+the failures, guess the next change, repeat. Evolve does that loop on its own. You give it a goal (a set of tasks
+and a way to score them) and a budget, and it automatically evolves the artifacts until they meet the goal with a
+high score. <span class="hl">No manual work is needed</span>: nobody hand-edits the harness, reads failures or
+picks winners. The same mechanism extends to settings and any other file the harness reads.</p>
+"""
 
 INTRO = """
 <p class="lead">In nature, evolution needs three things: <b>variation</b> (children differ slightly from their
 parents), <b>selection</b> (the environment decides who survives) and <b>inheritance</b> (survivors pass their
 traits on). Repeat that for enough generations and living things get remarkably good at surviving where they live,
 without anyone designing them.</p>
-<p class="lead"><b>Evolve</b> applies the same three ingredients to an AI coding agent. Its “DNA” is the written
-guidance the agent reads before it starts work: the instructions, notes and lessons. An AI editor makes small
-changes to that text (variation). Each new version is put to work on real programming problems and scored by the
-projects' own tests (selection). The versions that do well become the parents of the next round (inheritance).
-The AI model is the same throughout; only its guidance evolves.</p>
+<p class="lead"><b>Evolve</b> applies the same three ingredients to an agent harness. Its “DNA” is the set of
+harness artifacts the model reads before it starts work. An AI editor makes small changes to those artifacts
+(variation). Each new version is put to work on real programming problems and scored by the projects' own tests
+(selection). The versions that do well become the parents of the next round (inheritance). The model is the same
+throughout; only the harness evolves.</p>
 """
 
 COMPARE = [
-    ("DNA", "The genome: the agent's instructions, notes and lessons, a folder of text files"),
-    ("A mutation", "A small edit to that text, proposed by an AI editor"),
+    ("DNA", "The genome: the harness artifacts (system prompt, memory, lessons, skills, tool descriptions), "
+            "a folder of text files"),
+    ("A mutation", "A small edit to those files, proposed by an AI editor"),
     ("Mutations are random", "Mutations are guided: the editor first reads which problems the parent failed, "
                              "and what earlier attempts already tried"),
     ("The environment", "Real programming problems from open-source projects"),
@@ -255,65 +268,94 @@ COMPARE = [
     ("Isolated islands (like Darwin's finches)", "Separate populations that evolve side by side, so one idea "
                                                  "does not take over too early"),
     ("Animals migrating between islands", "Every few generations, an island's best version is copied to the next"),
-    ("Ecological niches", "Slots for different kinds of solutions (short or long instructions, cheap or "
+    ("Ecological niches", "Slots for different kinds of solutions (short or long harness, cheap or "
                           "thorough), so variety survives"),
     ("Surviving in a new climate", "Doing well on unseen problems, not just the practice set"),
     ("Millions of years", "A few hours, and about the price of a dinner out"),
 ]
 
+
+def idea() -> str:
+    rows = "".join(f"<tr><td>{html.escape(a)}</td><td>{html.escape(b)}</td></tr>" for a, b in COMPARE)
+    return (f'{WHY}{INTRO}<div class="cmpwrap sk-box"><table class="cmp"><tr><th>In nature</th><th>In evolve</th></tr>'
+            f'{rows}</table></div>')
+
+
+def player(run: Run, costs: dict) -> str:
+    data = build(run, costs)
+    # ensure_ascii=False keeps text as text, so the page-wide dash scrub in report.py reaches it too
+    blob = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+    return f"""
+<div class="stage sk-box">
+  <div class="narr" id="narr"></div>
+  <div class="canvas"><svg class="tree sk" id="tree" viewBox="0 0 {data['width']} {data['height']}"></svg>
+  <div class="lab" id="lab"></div></div>
+  <div class="legend"><b style="background:#6b7280"></b>original<b style="background:#3b82f6"></b>survived
+  <b style="background:#f59e0b"></b>failed a test<b style="background:#d4a017"></b>champion 👑
+  <b style="background:#d1d5db"></b>discarded</div>
+  <div class="controls"><button id="prev">‹ Back</button><button id="play" class="primary">Pause</button>
+  <button id="next">Next ›</button><button id="speed">Speed 1×</button>
+  <div class="bar"><i id="bar"></i></div><span class="count" id="count"></span></div>
+</div>
+<p class="muted small">The left and right arrow keys step through the scenes.</p>
+<script type="application/json" id="data">{blob}</script>"""
+
+
 CSS = """
-*{box-sizing:border-box}body{margin:0;font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-color:#1f2937;background:#fbfaf7}
-main{max-width:1080px;margin:0 auto;padding:28px 24px 60px}
-h1{font-size:34px;margin:0 0 6px}h2{margin:36px 0 10px}.muted{color:#6b7280}
-.lead{font-size:18px;max-width:900px}
-table.cmp{border-collapse:collapse;margin:8px 0;width:100%;max-width:900px}
-table.cmp th,table.cmp td{text-align:left;padding:7px 12px;border-bottom:1px solid #ece9e2;vertical-align:top}
-table.cmp th{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:#6b7280}
-table.cmp td:first-child{width:36%;color:#4b5563}
-.stage{background:white;border:1px solid #e7e3da;border-radius:14px;box-shadow:0 2px 14px rgba(0,0,0,.05);overflow:hidden}
-.narr{padding:18px 24px 10px;min-height:118px}
-.narr .cap{font-size:23px;font-weight:650;margin:0}
+.lead{font-size:17.5px;max-width:940px}
+.cmpwrap{max-width:940px;margin:14px 0;padding:6px 8px;background:#fffef9}table.cmp{border-collapse:collapse;width:100%}
+table.cmp th,table.cmp td{text-align:left;padding:7px 12px;border-bottom:1px dashed #c9c3b4;vertical-align:top}
+table.cmp th{font-family:var(--hand);font-size:19px;color:#2f5d9e}
+table.cmp td:first-child{width:36%;color:#4b5563;font-family:var(--hand);font-size:17px}
+.stage{margin:14px 0 6px;background:#fffdf7}
+.narr{padding:18px 24px 10px;min-height:122px}
+.narr .cap{font-family:var(--hand);font-size:27px;margin:0;color:#1f2937}
 .narr .sub{font-size:16.5px;color:#4b5563;margin:6px 0 0;max-width:980px}
 .fade{animation:fade .5s ease both}@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.canvas{display:grid;grid-template-columns:640px 1fr;gap:0;border-top:1px solid #f0ede6}
+.canvas{display:grid;grid-template-columns:640px 1fr;gap:0}
 svg.tree{width:640px;height:490px;display:block}
-.lane{fill:#f5f8ff}.lane.alt{fill:#f6fbf6}.lane-name{font-size:13px;fill:#6b7280;font-weight:600}
-.edge{fill:none;stroke:#cfd6e0;stroke-width:2.2}.edge.hot{stroke:#d4a017;stroke-width:4}
+.lane{fill:#f2f6fd}.lane.alt{fill:#f3f9f1}.lane-name{font-family:var(--hand);font-size:17px;fill:#6b7280}
+.edge{fill:none;stroke:#8a94a3;stroke-width:1.6}.edge.hot{stroke:#c8960c;stroke-width:3}
 .edge.draw{stroke-dasharray:400;stroke-dashoffset:400;animation:draw 1.2s .2s ease forwards}
 @keyframes draw{to{stroke-dashoffset:0}}
-.node circle.body{stroke:white;stroke-width:3;transition:all .4s}
+.node circle.body{stroke:#2b2b2b;stroke-width:1.4}
 .node.seed circle.body{fill:#6b7280}.node.pooled circle.body{fill:#3b82f6}.node.rejected circle.body{fill:#f59e0b}
-.node.invalid circle.body{fill:#d1d5db}.node.champion circle.body{fill:#d4a017}
-.node text.id{font-size:12px;font-weight:600;fill:#374151}.node text.sc{font-size:12px;fill:#6b7280}
+.node.invalid circle.body{fill:#c4c4c4}.node.champion circle.body{fill:#d4a017}
+.node text.id{font-family:var(--hand);font-size:15px;fill:#2b2b2b}.node text.sc{font-family:var(--hand);font-size:14px;fill:#6b7280}
 .node.dim{opacity:.35}.node.pop{animation:pop .7s cubic-bezier(.3,1.6,.5,1) both;transform-box:fill-box;transform-origin:center}
 @keyframes pop{from{transform:scale(0)}to{transform:scale(1)}}
-.ring{fill:none;stroke:#2563eb;stroke-width:3;stroke-dasharray:5 4;animation:spin 6s linear infinite;transform-box:fill-box;transform-origin:center}
+.ring{fill:none;stroke:#2f5d9e;stroke-width:2;animation:spin 8s linear infinite;transform-box:fill-box;transform-origin:center}
 @keyframes spin{to{transform:rotate(360deg)}}
 .crown{font-size:20px}
-.ghost circle{fill:none;stroke:#d4a017;stroke-width:2.5;stroke-dasharray:4 3}.ghost text{font-size:11px;fill:#92400e}
-.mig{stroke:#d4a017;stroke-width:2;stroke-dasharray:5 4;fill:none;marker-end:url(#arr)}
-.lab{padding:18px 22px;border-left:1px solid #f0ede6;background:#fdfdfb}
-.lab h3{margin:0 0 12px;font-size:17px}
-.row{margin:0 0 14px}.row .nm{font-size:13.5px;font-weight:600;color:#374151;display:flex;justify-content:space-between}
+.ghost circle{fill:none;stroke:#c8960c;stroke-width:2}.ghost text{font-family:var(--hand);font-size:14px;fill:#92400e}
+.mig{stroke:#c8960c;stroke-width:1.8;fill:none;marker-end:url(#arr)}
+.lab{padding:18px 22px;border-left:1.5px dashed #c9c3b4}
+.lab h3{margin:0 0 12px;font-family:var(--hand);font-size:22px;font-weight:normal}
+.row{margin:0 0 14px}.row .nm{font-size:14px;font-weight:600;color:#374151;display:flex;justify-content:space-between}
 .row .nm span{font-weight:500;color:#6b7280}
-.sq{display:inline-block;width:24px;height:24px;border-radius:5px;margin:5px 4px 0 0;background:#e5e7eb}
-.sq.ok{background:#10b981}.sq.no{background:#f87171}
+.sq{display:inline-block;width:24px;height:24px;margin:5px 4px 0 0;background:#e5e7eb;border:1.3px solid #333;
+border-radius:4px 7px 3px 6px/6px 3px 7px 4px}
+.sq.ok{background:repeating-linear-gradient(-45deg,#10b981 0 3px,#a7f3d0 3px 5px)}
+.sq.no{background:repeating-linear-gradient(45deg,#ef4444 0 3px,#fecaca 3px 5px)}
 .sq.anim{animation:sq .35s ease both}@keyframes sq{from{transform:scale(.2);opacity:0}to{transform:none;opacity:1}}
-.verdict{margin-top:12px;padding:10px 12px;border-radius:9px;font-weight:600;font-size:15px}
-.verdict.win{background:#fef3c7;color:#92400e}.verdict.keep{background:#eff6ff;color:#1e40af}
-.verdict.fail{background:#fff7ed;color:#9a3412}.verdict.info{background:#f3f4f6;color:#374151}
+.verdict{margin-top:12px;padding:8px 12px;font-family:var(--hand);font-size:19px}
+.verdict.win{background:linear-gradient(transparent 20%,#fde68a 20%,#fde68a 85%,transparent 85%);color:#78350f}
+.verdict.keep{color:#1e40af}.verdict.fail{color:#9a3412}.verdict.info{color:#374151}
 .lab ul{padding-left:18px;margin:6px 0}.lab li{margin:7px 0}
-.legend{font-size:13px;color:#6b7280;padding:4px 22px 0}.legend b{display:inline-block;width:11px;height:11px;border-radius:50%;margin:0 5px 0 12px;vertical-align:-1px}
-.controls{display:flex;align-items:center;gap:10px;padding:12px 22px;border-top:1px solid #f0ede6;background:#faf9f6}
-button{font:inherit;font-size:14px;padding:6px 14px;border-radius:8px;border:1px solid #d6d3cc;background:white;cursor:pointer}
-button.primary{background:#1f2937;color:white;border-color:#1f2937}
-.bar{flex:1;height:6px;background:#ece9e2;border-radius:3px;overflow:hidden}.bar i{display:block;height:100%;background:#d4a017;width:0;transition:width .4s}
-.count{font-size:13px;color:#6b7280;min-width:70px;text-align:right}
-@media (max-width:1050px){.canvas{grid-template-columns:1fr}.lab{border-left:0;border-top:1px solid #f0ede6}}
+.stage .legend{font-size:13px;color:#6b7280;padding:4px 22px 0;margin:0}
+.stage .legend b{display:inline-block;width:11px;height:11px;border-radius:50%;margin:0 5px 0 12px;vertical-align:-1px;border:1px solid #333}
+.controls{display:flex;align-items:center;gap:10px;padding:12px 22px}
+button{font-family:var(--hand);font-size:17px;padding:4px 14px;border:1.5px solid #333;background:#fffdf7;cursor:pointer;
+border-radius:255px 15px 225px 15px/15px 225px 15px 255px}
+button.primary{background:#2b2b2b;color:#fffdf7}
+.bar{flex:1;height:8px;border:1.3px solid #333;border-radius:6px 3px 7px 4px;overflow:hidden}
+.bar i{display:block;height:100%;background:repeating-linear-gradient(-45deg,#d4a017 0 3px,#fde68a 3px 6px);width:0;transition:width .4s}
+.count{font-family:var(--hand);font-size:16px;color:#6b7280;min-width:70px;text-align:right}
+@media (max-width:1050px){.canvas{grid-template-columns:1fr}.lab{border-left:0;border-top:1.5px dashed #c9c3b4}}
 """
 
 SCRIPT = r"""
+(() => {
 const D = JSON.parse(document.getElementById('data').textContent);
 const S = D.scenes; let k = 0, playing = true, timer = null, speed = 1;
 const $ = id => document.getElementById(id);
@@ -324,15 +366,15 @@ function lineage(id) { const out = new Set(); const byId = Object.fromEntries(D.
 function tree(sc) {
   const shown = D.nodes.slice(0, sc.nodes), byId = Object.fromEntries(shown.map(n => [n.id, n]));
   const hot = lineage(sc.champion), focus = new Set(sc.focus); let g = '';
-  D.lanes.forEach((l, i) => { g += `<rect class="lane ${i % 2 ? 'alt' : ''}" x="0" y="${l.y - l.h / 2 + 4}" width="${D.width}" height="${l.h - 8}" rx="10"/>`
-    + `<text class="lane-name" x="${D.width - 14}" y="${l.y - l.h / 2 + 24}" text-anchor="end">${esc(l.name)}</text>`; });
+  D.lanes.forEach((l, i) => { g += `<rect class="lane ${i % 2 ? 'alt' : ''}" x="4" y="${l.y - l.h / 2 + 6}" width="${D.width - 8}" height="${l.h - 12}"/>`
+    + `<text class="lane-name" x="${D.width - 16}" y="${l.y - l.h / 2 + 28}" text-anchor="end">${esc(l.name)}</text>`; });
   shown.forEach(n => { if (n.parent && byId[n.parent]) {
     const cls = 'edge' + (hot.has(n.id) && hot.has(n.parent) ? ' hot' : '') + (n.id === sc.new ? ' draw' : '');
     g += `<path class="${cls}" d="${path(byId[n.parent], n)}"/>`; } });
   sc.migrations.forEach(m => { const src = byId[m.id]; if (!src) return;
     g += `<path class="mig" d="M${src.x},${src.y + 22} L${m.x},${m.y - 26}"/>`
       + `<g class="ghost"><circle cx="${m.x}" cy="${m.y}" r="16"/><text x="${m.x}" y="${m.y + 33}" text-anchor="middle">${esc(m.id)}</text>`
-      + `<text x="${m.x}" y="${m.y + 47}" text-anchor="middle">(migrant)</text></g>`; });
+      + `<text x="${m.x}" y="${m.y + 48}" text-anchor="middle">(migrant)</text></g>`; });
   shown.forEach(n => {
     const dim = sc.focus.length && !focus.has(n.id) && n.id !== sc.parent ? ' dim' : '';
     // gold only while it holds the title: a node is drawn as the champion of *this* scene
@@ -342,13 +384,14 @@ function tree(sc) {
     g += `<g class="${cls}"><title>${esc(n.id)}</title>`
       + (focus.has(n.id) ? `<circle class="ring" cx="${n.x}" cy="${n.y}" r="${r + 7}"/>` : '')
       + `<circle class="body" cx="${n.x}" cy="${n.y}" r="${r}"/>`
-      + (n.kind === 'invalid' ? `<text x="${n.x}" y="${n.y + 5}" text-anchor="middle" font-size="16" fill="white">✕</text>` : '')
+      + (n.kind === 'invalid' ? `<text x="${n.x}" y="${n.y + 6}" text-anchor="middle" font-size="18" fill="#2b2b2b">✕</text>` : '')
       + (n.id === sc.champion ? `<text class="crown" x="${n.x}" y="${n.y - r - 6}" text-anchor="middle">👑</text>` : '')
-      + `<text class="id" x="${n.x}" y="${n.y + r + 16}" text-anchor="middle">${esc(n.label)}</text>`
-      + (n.score ? `<text class="sc" x="${n.x}" y="${n.y + r + 31}" text-anchor="middle">${esc(n.score)}</text>` : '')
+      + `<text class="id" x="${n.x}" y="${n.y + r + 18}" text-anchor="middle">${esc(n.label)}</text>`
+      + (n.score ? `<text class="sc" x="${n.x}" y="${n.y + r + 34}" text-anchor="middle">${esc(n.score)}</text>` : '')
       + `</g>`; });
   $('tree').innerHTML = `<defs><marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">`
-    + `<path d="M0,0 L10,5 L0,10 z" fill="#d4a017"/></marker></defs>` + g;
+    + `<path d="M0,0 L10,5 L0,10 z" fill="#c8960c"/></marker></defs>` + g;
+  window.sketch && window.sketch($('tree'));
 }
 function lab(sc) {
   const L = sc.lab; if (!L) { $('lab').innerHTML = `<p class="muted">The test lab is quiet. Watch the family tree.</p>`; return; }
@@ -377,44 +420,9 @@ $('play').onclick = () => { if (!playing && k === S.length - 1) { setPlaying(tru
 $('prev').onclick = () => { setPlaying(false); show(k - 1); };
 $('next').onclick = () => { setPlaying(false); show(k + 1); };
 $('speed').onclick = () => { speed = speed === 1 ? 2 : speed === 2 ? 0.5 : 1; $('speed').textContent = `Speed ${speed}×`; };
-document.addEventListener('keydown', e => { if (e.key === 'ArrowRight') $('next').click(); if (e.key === 'ArrowLeft') $('prev').click();
-  if (e.key === ' ') { e.preventDefault(); $('play').click(); } });
+document.addEventListener('keydown', e => {
+  if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+  if (e.key === 'ArrowRight') $('next').click(); if (e.key === 'ArrowLeft') $('prev').click(); });
 show(0);
+})();
 """
-
-
-def render(root: Path) -> str:
-    run = load(root)
-    data = build(run)
-    rows = "".join(f"<tr><td>{html.escape(a)}</td><td>{html.escape(b)}</td></tr>" for a, b in COMPARE)
-    blob = json.dumps(data).replace("</", "<\\/")
-    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>How the agent's instructions evolved</title><style>{CSS}</style></head><body><main>
-<h1>Evolving an AI coding agent</h1>
-<p class="muted">An animated replay of one real run (<code>{html.escape(run.root.name)}</code>). The full
-technical record is in <a href="report.html">report.html</a>.</p>
-<h2>The idea, in two paragraphs</h2>
-{INTRO}
-<table class="cmp"><tr><th>In nature</th><th>In evolve</th></tr>{rows}</table>
-<h2>Watch it happen</h2>
-<div class="stage">
-  <div class="narr" id="narr"></div>
-  <div class="canvas"><svg class="tree" id="tree" viewBox="0 0 {data['width']} {data.get('height', 490)}"></svg>
-  <div class="lab" id="lab"></div></div>
-  <div class="legend"><b style="background:#6b7280"></b>original<b style="background:#3b82f6"></b>survived
-  <b style="background:#f59e0b"></b>failed a test<b style="background:#d4a017"></b>champion 👑
-  <b style="background:#d1d5db"></b>discarded</div>
-  <div class="controls"><button id="prev">‹ Back</button><button id="play" class="primary">Pause</button>
-  <button id="next">Next ›</button><button id="speed">Speed 1×</button>
-  <div class="bar"><i id="bar"></i></div><span class="count" id="count"></span></div>
-</div>
-<p class="muted">Space plays or pauses. The arrow keys step through the scenes.</p>
-</main><script type="application/json" id="data">{blob}</script><script>{SCRIPT}</script></body></html>
-"""
-
-
-def write_story(root: Path, out_path: Path | None = None) -> Path:
-    out_path = Path(out_path or Path(root) / STORY)
-    out_path.write_text(render(root))
-    return out_path

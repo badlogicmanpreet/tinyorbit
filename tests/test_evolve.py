@@ -407,9 +407,9 @@ async def test_report_renders_a_finished_run(tmp_path):
     for needle in ("Why evolve the harness?", "No manual work is needed", "In nature", "Darwin",
                    "Watch it happen", "The story in one minute", "Family tree", "Islands and niches", "Island A",
                    "verify before done", "new champion", "easy safety check", "unseen problems",
-                   "Finished.", "Promoted:", "<svg", "+- Keep replies brief. Always run the tests"):
+                   "Promoted:", "<svg", "+- Keep replies brief. Always run the tests"):
         assert needle in page, needle
-    assert "http-equiv" not in page                                     # no refresh once finished
+    assert "http-equiv" not in page and 'class="status' not in page   # no refresh or banner once finished
     assert "var rough=" in page and "<script src" not in page           # one offline file, rough.js inlined
     assert "Glossary" not in page and "AI coding agent" not in page
     assert not re.search("[\u2014\u2013]", _PRE.sub("", page))          # house style: commas, not dashes

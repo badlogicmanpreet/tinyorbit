@@ -405,7 +405,8 @@ async def test_report_renders_a_finished_run(tmp_path):
     await evolve(seed_genome(), FakeEvaluator(), mutator, tmp_path / "run", loop_config(4), log=lambda _: None)
     page = write_report(tmp_path / "run").read_text()
     for needle in ("Why evolve the harness?", "No manual work is needed", "In nature", "Darwin",
-                   "Watch it happen", "The story in one minute", "Family tree", "Islands and niches", "Island A",
+                   "Self Evolved", "Watch it happen", "The story in one minute", "Conclusion",
+                   "In 4 attempts, evolve moved the harness", "AlphaEvolve", "OpenEvolve", "Family tree", "Islands and niches", "Island A",
                    "verify before done", "new champion", "easy safety check", "unseen problems",
                    "Promoted:", "<svg", "+- Keep replies brief. Always run the tests"):
         assert needle in page, needle

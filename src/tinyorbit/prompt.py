@@ -31,8 +31,18 @@ How to work:
 """
 
 
-def build_system_prompt(cwd: Path, memory: list[MemoryFile]) -> list[dict]:
-    static = STATIC_TEMPLATE.format(cwd=cwd, platform=f"{platform.system()} {platform.release()}")
+def render_template(template: str, cwd: Path) -> str:
+    """Fill the two placeholders by plain replacement, not str.format.
+
+    A template may come from an evolved genome (see tinyorbit.evolve), and
+    model-written text can carry stray braces that str.format would reject.
+    """
+    host = f"{platform.system()} {platform.release()}"
+    return template.replace("{cwd}", str(cwd)).replace("{platform}", host)
+
+
+def build_system_prompt(cwd: Path, memory: list[MemoryFile], template: str | None = None) -> list[dict]:
+    static = render_template(template if template is not None else STATIC_TEMPLATE, cwd)
     rendered = render_memory(memory)
     if rendered:
         static += "\n" + rendered + "\n"

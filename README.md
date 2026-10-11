@@ -37,7 +37,7 @@ export ANTHROPIC_API_KEY=...           # or `ant auth login`
 uv run python main.py                              # interactive REPL
 uv run python main.py "explain the bootstrap"      # REPL with a first prompt
 uv run python main.py --print "list the python files here"   # headless, streams to stdout
-uv run pytest                                      # 124 tests, no network
+uv run pytest                                      # 158 tests, no network
 ```
 
 Useful flags: `--model`, `--permission-mode {default,acceptEdits,bypassPermissions}`, `--allow 'Bash(git *)'`, `--allowed-tools 'Read,Grep'`, `--disallowed-tools 'Bash,mcp__*'`, `--effort xhigh`, `--max-turns 20`, `--no-fallbacks`, `--thinking-display summarized`, `--resume <id>` (with `--fork` to branch it). Inside the REPL: `/cost`, `/clear`, `/mode`, `/exit`. Ctrl+C mid-turn interrupts the turn; at the prompt it exits.
@@ -112,6 +112,7 @@ The full, annotated version (every named loop exit, the trust boundary, the six 
 | Memory              | `src/tinyorbit/memory.py`         | TINYORBIT.md / AGENTS.md from home and every ancestor of cwd |
 | REPL / print mode   | `src/tinyorbit/repl.py`           | event rendering, Ctrl+C as abort signal, permission prompts |
 | Embedding seam      | `src/tinyorbit/runtime.py`        | drive the loop as a library: a persistent session, events to a caller's sink instead of the terminal |
+| Self-evolution      | `src/tinyorbit/evolve/`           | a genome of harness text; per-run lesson reflection; archive-based evolution gated on held-out tasks |
 
 Built and wired through `Config.capabilities`: sub-agents (a `Task` tool that runs a nested loop in a fresh context; opt-in via `.tinyorbit/agents/*.md`), skills (a `Skill` tool that pulls a named instruction bundle into context; opt-in via `.tinyorbit/skills/`), PreToolUse guard hooks (fail-closed allow/deny/pass policy checks that run before permissions; opt-in via `TINYORBIT_HOOKS` or set by an embedder), and MCP (opt-in via env). Not built yet: the lighter context-management layers (snip/microcompact/collapse). Only auto-compact and reactive compact exist.
 
@@ -150,6 +151,30 @@ uv run python main.py --print --thinking-display summarized "fix the failing tes
 
 Capturing one task showed what the loop looks like from the wire. Nineteen calls over a single reused HTTPS connection. Adaptive thinking firing on five of them and declining on fourteen. Uncached input pinned at exactly 2 tokens on every call while cache reads grew to 12,039. And a thinking pause showing up as 2.6 to 3.9 seconds of silence on an open socket, after which the whole summary arrives in a burst of deltas 0.2 ms apart. The replay is [reports/agent-loop-trace.html](reports/agent-loop-trace.html).
 
+## Self-evolving layer
+
+`src/tinyorbit/evolve/` lets the harness improve its own text from feedback while the model stays frozen. Everything it evolves lives in a *genome*: a small directory of Markdown that a run layers over the built-in defaults with `--genome DIR` (or `TINYORBIT_GENOME`).
+
+```
+system_prompt.md   memory.md   lessons.md   skills/<name>/SKILL.md   tools/<ToolName>.md
+```
+
+Two loops write to that one artifact set:
+
+- **Inner loop (`reflect.py`).** After a run, one model call reads the condensed transcript plus whatever outcome is known and distills at most three general lessons into `lessons.md`. The file is bounded and deduplicated, and the next run loads it as memory. `--print --genome DIR --reflect` does this live. `python -m tinyorbit.evolve reflect --transcript T --outcome failed --feedback "..."` does it offline with a verified outcome, which is worth much more than the agent's own "done".
+- **Outer loop (`loop.py`).** An evolutionary search over whole genomes. An LLM mutator reads the parent's failure reports, the attempt ledger (so it does not repeat rejected ideas) and a few strong variants, then proposes SEARCH/REPLACE edits. A child goes through cheap guards, then a staged cascade (smoke set first). Fitness is the train score minus a penalty for growth over the seed. The archive is a MAP-Elites grid over size and cost with islands. A child becomes champion only if it also improves on a held-out stage it never saw failures from. Every iteration is checkpointed and resumable.
+
+```bash
+uv run python -m tinyorbit.evolve seed runs/g0              # generation 0 = today's prompt and tool docs
+uv run python -m tinyorbit.evolve run --seed runs/g0 --out runs/evo1 \
+    --evaluator mypkg.evals:make --stages smoke:0.2,train --holdout holdout --iterations 20
+uv run python -m tinyorbit.evolve show --out runs/evo1
+uv run python -m tinyorbit.evolve report --out runs/evo1   # runs/evo1/report.html
+uv run python main.py --genome runs/evo1/champion "fix the failing test"
+```
+
+An evaluator is any object with `async evaluate(genome, stage) -> EvalResult(score, metrics, failures)`, loaded from `module:factory` or `file.py:factory`, so benchmarks stay out of the core. `bench/evolve_eval.py` is the SWE-bench one (see [Benchmarking](#benchmarking)). Every step of a run is appended to `events.jsonl`: which island and parent were picked and why, the mutator's prompt, answer and diff (under `iterations/NNNN/`), each stage's start, end, score, cost and failures, the grid cell a child took, every promotion decision and migration. `report.py` replays that log into one self-contained `report.html` (inline SVG, no scripts) with a plain-language story, the score per attempt, the family tree, the island grids and every attempt in detail. `run` rewrites it after each iteration, and while a run is going the page refreshes itself and names the stage in progress. Without `--genome` nothing in this package is imported, and the seed genome reproduces the default prompt and tool schemas byte for byte (a test enforces it).
+
 ## Testing
 
 `QueryDeps` is the injection seam. Tests pass a scripted `call_model` (a list of canned responses or exceptions) and a fake `compact`, then assert on the event sequence and on the exact request messages the loop would have sent. Tool tests run against a temp directory with real subprocesses. Nothing touches the network.
@@ -161,13 +186,23 @@ Capturing one task showed what the loop looks like from the wire. Nineteen calls
 ```bash
 cd bench
 .venv/bin/python run.py --smoke                        # one container, no key: proves the plumbing
-.venv/bin/python run.py --tasks tasks-hard10.json --timeout-min 90
-.venv/bin/swebench eval verified -p predictions.jsonl --run-id my-run -j 1
+.venv/bin/python run.py --tasks tasks-hard10.json --run-id hard-1 --jobs 2 --score
 ```
 
-Per task it pulls the instance image, copies tinyorbit in, installs it with uv, runs `main.py --print` with the issue as the prompt, captures the transcript and the full message history, takes `git diff` from `/testbed`, and appends a prediction line. Other flags: `--only ID`, `--dry-run`, `--keep`, `--trace`, `--thinking-display`, `--model`, `--effort`, `--max-turns`.
+Per task it pulls the instance image, copies tinyorbit in, installs it with uv, runs `main.py --print` with the issue as the prompt, captures the transcript and the full message history, takes `git diff` from `/testbed`, and appends a prediction line. Everything lands in `bench/logs/<run-id>/` (untracked; the default id is a UTC timestamp). `--score` then runs `swebench eval verified` in that directory and reduces its output to `scores.json`: a verdict per instance plus the hidden tests that still fail. Rerunning the same `--run-id` resumes, skipping instances that already have a prediction. Other flags: `--only ID`, `--genome DIR`, `--dry-run`, `--keep`, `--trace`, `--thinking-display`, `--model`, `--effort`, `--max-turns`.
 
-Three frozen task sets ship here so runs are reproducible: `tasks-easy10.json` (seed 42, also the default `tasks.json`), `tasks-hard10.json` (the 1 to 4 h and >4 h tail, stratified by repository), and `tasks-five.json` (an earlier sample, kept for provenance). Run outputs (transcripts, patches, predictions, scoring) stay untracked under `bench/logs/<run-id>/`. See the last section of [notes.md](notes.md) for the method and for what to look for in a failure.
+Frozen task sets ship here so runs are reproducible: `tasks-easy10.json` (seed 42, also the default `tasks.json`), `tasks-hard10.json` (the 1 to 4 h and >4 h tail, stratified by repository), `tasks-holdout10.json` (ten more from that tail, disjoint from every other set, made by `make_split.py --seed 7`), `tasks-smoke3.json` (three of the easy ten), and `tasks-five.json` (an earlier sample, kept for provenance).
+
+To evolve the harness against SWE-bench, point the loop at `evolve_eval.py`. Stage `smoke` is the three easy tasks (a cheap check that an edit did not break anything), `train` is the hard ten (their failures are what the mutator reads), and `holdout` is the disjoint ten (only its score is ever used, to gate promotion).
+
+```bash
+uv run python -m tinyorbit.evolve seed bench/logs/g0
+uv run python -m tinyorbit.evolve run --out bench/logs/evo-1 --seed bench/logs/g0 \
+    --evaluator bench/evolve_eval.py:make --arg jobs=2 \
+    --stages smoke:0.67,train --holdout holdout --holdout-margin 0.1 --iterations 10
+```
+
+Each (genome, stage) pair is one `run.py --genome --score` run with a content-addressed id, so a resumed loop never pays twice for the same genome. An instance that was never scored raises instead of counting as a miss, because a docker hiccup says nothing about the genome. Budget for it honestly: one train-plus-holdout evaluation is twenty agent runs (about $20 and an hour at `--jobs 2` on the numbers above), and with ten tasks a single flip moves the score by 0.1. Re-run a champion before believing it. See the last section of [notes.md](notes.md) for the method and for what to look for in a failure.
 
 ## Layout
 
@@ -190,8 +225,9 @@ Three frozen task sets ship here so runs are reproducible: `tasks-easy10.json` (
       registry.py  task_tool.py  skill_tool.py
     agents.py  skills.py  hooks.py  sessions.py   # opt-in subsystems
     mcp/                   # external MCP tool servers (opt-in)
+    evolve/                # self-evolving layer: genome, reflect, mutate, archive, loop (opt-in)
   tests/                   # scripted-model loop tests + tool/provider/subsystem tests, no network
-  bench/                   # SWE-bench runner: run.py, prompt.txt, frozen task sets
+  bench/                   # SWE-bench runner: run.py, scoring.py, evolve_eval.py, frozen task sets
   reports/                 # architecture.html + HTML write-ups of the benchmark runs, and their data
 ```
 

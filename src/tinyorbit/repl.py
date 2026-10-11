@@ -216,8 +216,19 @@ def run_print_mode(config: "Config") -> int:
         mcp = await _start_mcp(config)
         _apply_tool_filter(config)
         ctx = _make_context(config, policy, provider, session)
+        renderer = Renderer()
+        ended: list[str] = []
+
+        def sink(event: object) -> None:
+            renderer.handle(event)
+            if isinstance(event, Done):
+                ended.append(event.reason)
+
         try:
-            return await run_turn(config, session, ctx, provider, config.initial_prompt)
+            text = await run_turn(config, session, ctx, provider, config.initial_prompt, sink=sink)
+            if config.reflect and config.genome_dir is not None:
+                await _reflect(config, session, provider, ended[-1] if ended else "unknown")
+            return text
         finally:
             if mcp is not None:
                 await mcp.aclose()
@@ -232,6 +243,27 @@ def run_print_mode(config: "Config") -> int:
     if path := os.environ.get("TINYORBIT_TRANSCRIPT"):
         _dump_transcript(Path(path), config, session)
     return 0
+
+
+async def _reflect(config: "Config", session: SessionState, provider, reason: str) -> None:
+    """Inner-loop self-improvement: distill lessons from this run into the genome.
+
+    The only outcome signal here is the loop's own exit reason, which is the
+    agent grading itself; a benchmark that knows the verified result calls
+    reflect_into_genome() with it instead. Best-effort: never fails the run.
+    """
+    from tinyorbit.evolve.llm import provider_complete
+    from tinyorbit.evolve.reflect import reflect_into_genome
+
+    try:
+        complete = provider_complete(provider, config.model, cost=session.cost, max_tokens=4_000)
+        new = await reflect_into_genome(
+            config.genome_dir, session.messages, complete,
+            outcome=f"agent ended with '{reason}' (self-reported, unverified)", source=session.session_id,
+        )
+        print(_paint(DIM, f"  · reflect: {len(new)} new lesson(s) → {config.genome_dir}"), file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001 — reflection is advisory
+        print(_paint(YELLOW, f"  · reflect skipped: {exc}"), file=sys.stderr)
 
 
 def _dump_transcript(path: Path, config: "Config", session: SessionState) -> None:

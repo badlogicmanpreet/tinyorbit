@@ -1,0 +1,756 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>tinyorbit evolve: a self-evolving layer over an agent harness</title>
+<style>
+  @page { size: A4; margin: 18mm 17mm 18mm 17mm; }
+  :root { --ink:#1d2330; --mute:#5b6476; --rule:#d9dee8; --blue:#2a78d6; --blue-bg:#eaf2fc;
+          --green:#117853; --green-bg:#e3f5ee; --orange:#b04a1f; --orange-bg:#fcebe2;
+          --purple:#5f3bad; --purple-bg:#efe8fb; }
+  * { box-sizing: border-box; }
+  body { font: 10.4pt/1.5 -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--ink); margin: 0; }
+  h1 { font-size: 25pt; line-height: 1.15; margin: 0 0 6pt; letter-spacing: -0.3pt; }
+  h2 { font-size: 15pt; margin: 22pt 0 6pt; padding-top: 6pt; border-top: 1.5pt solid var(--ink); break-after: avoid; }
+  h3 { font-size: 11.5pt; margin: 14pt 0 4pt; break-after: avoid; }
+  p { margin: 0 0 7pt; }
+  ul, ol { margin: 0 0 8pt; padding-left: 16pt; }
+  li { margin: 0 0 3pt; }
+  code, pre { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 8.6pt; }
+  code { background: #f2f4f8; padding: 0.5pt 3pt; border-radius: 2pt; }
+  pre { background: #f6f7fa; border: 0.6pt solid var(--rule); border-radius: 3pt; padding: 7pt 9pt;
+        white-space: pre-wrap; line-height: 1.38; margin: 4pt 0 9pt; break-inside: avoid; }
+  pre code { background: none; padding: 0; }
+  table { width: 100%; border-collapse: collapse; margin: 4pt 0 10pt; font-size: 9.2pt; break-inside: avoid; }
+  th, td { text-align: left; vertical-align: top; padding: 4pt 6pt; border-bottom: 0.6pt solid var(--rule); }
+  th { font-weight: 600; background: #f3f5f9; }
+  .cover { height: 255mm; display: flex; flex-direction: column; justify-content: space-between; break-after: page; }
+  .kicker { color: var(--blue); font-weight: 600; letter-spacing: 1pt; text-transform: uppercase; font-size: 9pt; }
+  .lede { font-size: 12.5pt; line-height: 1.5; color: #333b4c; max-width: 150mm; }
+  .meta { color: var(--mute); font-size: 9pt; }
+  .box { border-radius: 4pt; padding: 8pt 11pt; margin: 6pt 0 10pt; break-inside: avoid; }
+  .box.blue { background: var(--blue-bg); border-left: 3pt solid var(--blue); }
+  .box.green { background: var(--green-bg); border-left: 3pt solid var(--green); }
+  .box.orange { background: var(--orange-bg); border-left: 3pt solid var(--orange); }
+  .box.purple { background: var(--purple-bg); border-left: 3pt solid var(--purple); }
+  .box p:last-child, .box ul:last-child { margin-bottom: 0; }
+  .toc { columns: 2; column-gap: 12mm; font-size: 10pt; }
+  .toc div { margin-bottom: 3pt; }
+  .toc b { display: inline-block; width: 16pt; color: var(--blue); }
+  figure { margin: 6pt 0 12pt; break-inside: avoid; }
+  figcaption { color: var(--mute); font-size: 8.8pt; margin-top: 3pt; }
+  svg text { font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 9pt; }
+  .page-break { break-before: page; }
+  .small { font-size: 9pt; color: var(--mute); }
+</style>
+</head>
+<body>
+
+<!-- ───────────────────────────── cover ───────────────────────────── -->
+<section class="cover">
+  <div>
+    <div class="kicker">tinyorbit · design document</div>
+    <h1 style="margin-top:10pt">evolve: a self-evolving layer<br>over an agent harness</h1>
+    <p class="lede" style="margin-top:14pt">The model stays frozen. Everything the harness <em>says</em> to it (the system prompt, standing memory, lessons, skills and tool descriptions) becomes a versioned artifact called a <b>genome</b>. Two loops improve that artifact from feedback. An inner loop distills lessons after every run. An outer loop runs an archive-based evolutionary search over whole genomes, scored on a real benchmark and accepted only when the gain holds up on tasks it never trained on.</p>
+  </div>
+
+  <div>
+    <div class="box blue">
+      <p><b>In one paragraph.</b> <code>python -m tinyorbit.evolve run</code> starts from today's harness text (generation 0), asks an LLM mutator to read the failures of a parent genome and propose small SEARCH/REPLACE edits, filters the child through free guards and a staged evaluation cascade (smoke set, then train set), scores it as <i>train score minus a size penalty</i>, files it in a MAP-Elites archive split into islands, and promotes it to <b>champion</b> only if it also beats the current champion on a held-out split. Every attempt, kept or rejected, is written to a ledger that the next mutation reads. Runs are checkpointed and resumable. The champion is a plain directory you pass to any run with <code>--genome</code>.</p>
+    </div>
+    <h3 style="margin-top:14pt">Contents</h3>
+    <div class="toc">
+      <div><b>0</b>The simple version, and what it costs</div>
+      <div><b>1</b>Why a self-evolving layer</div>
+      <div><b>2</b>The genome</div>
+      <div><b>3</b>Inner loop: reflection</div>
+      <div><b>4</b>Outer loop: the evolutionary search</div>
+      <div><b>5</b>The evaluator contract</div>
+      <div><b>6</b>SWE-bench as the evaluator</div>
+      <div><b>7</b>End to end: a run, step by step</div>
+      <div><b>8</b>Design choices and where they come from</div>
+      <div><b>9</b>Cost, noise and honest limits</div>
+      <div><b>10</b>What comes next</div>
+      <div><b>A</b>CLI and file reference</div>
+    </div>
+  </div>
+
+  <p class="meta">tinyorbit, branch <code>feat/self-evolve</code> · <code>src/tinyorbit/evolve/</code> (~1,300 lines) and <code>bench/</code> (evaluator, scoring, splits) · 158 tests, no network · October 2026</p>
+</section>
+
+<!-- ───────────────────────────── 0 ───────────────────────────── -->
+<h2 style="border-top:none; margin-top:0">0 · The simple version, and what it costs</h2>
+
+<p>Forget the machinery for a moment. Evolve does this:</p>
+<ol>
+  <li><b>Run today's tinyorbit (generation 0)</b> on 10 hard problems. Say it solves 7/10. That is the score to beat.</li>
+  <li><b>Change the genome a little.</b> An LLM reads why the 3 hard problems failed and edits the prompt, a skill or a lesson.</li>
+  <li><b>Test the changed version.</b> First on 3 easy problems: if it now fails one, the change broke something, so throw it away (cheap). Then on the 10 hard problems: did it beat 7/10?</li>
+  <li><b>If it did, check it on 10 <em>other</em> hard problems it has never seen.</b> It becomes the new best only if it also does better there. That proves the change helps in general, not just on the 10 it practised on.</li>
+  <li><b>Repeat</b> steps 2 to 4. Each repeat is one <b>iteration</b>, and each one builds on the versions that did well.</li>
+</ol>
+<p>The 3 easy problems are not what we improve: tinyorbit already solves them all. They are a safety check that a change did not break the agent. The score that counts is on the <b>hard</b> problems, and a change only wins if it also helps on hard problems it never trained on.</p>
+
+<figure>
+<svg viewBox="0 0 700 520" width="100%" style="background:#fdfbf5; border:0.6pt solid #e6e0cf; border-radius:4pt">
+  <defs>
+    <filter id="pencil" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="7" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="3.2"/>
+    </filter>
+    <filter id="pencil2" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="2" seed="21" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2.4"/>
+    </filter>
+    <marker id="ph" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M1,1 L10,6 L1,11" fill="none" stroke="#3a3a3a" stroke-width="1.6" stroke-linecap="round"/>
+    </marker>
+  </defs>
+  <style>
+    .hand { font-family: "Bradley Hand", "Chalkboard SE", "Comic Sans MS", cursive; fill:#2b2b2b; }
+    .t { font-size: 17px; font-weight: 700; }
+    .s { font-size: 13.5px; fill:#4a4a4a; }
+    .n { font-size: 13px; fill:#7a3b1d; }
+    .g { fill:none; stroke:#3a3a3a; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; }
+    .g2 { fill:none; stroke:#8a8a8a; stroke-width:0.9; stroke-linecap:round; }
+  </style>
+
+  <!-- 1: generation 0 -->
+  <g filter="url(#pencil)">
+    <rect x="22" y="22" width="220" height="86" rx="10" class="g" style="fill:#f3efe2"/>
+    <rect x="25" y="25" width="216" height="82" rx="10" class="g2"/>
+  </g>
+  <text x="132" y="50" text-anchor="middle" class="hand t">1 · today's tinyorbit</text>
+  <text x="132" y="72" text-anchor="middle" class="hand s">generation 0, on 10 hard</text>
+  <text x="132" y="93" text-anchor="middle" class="hand s">solves 7/10 = score to beat</text>
+
+  <g filter="url(#pencil2)"><path d="M246 64 C 290 58, 320 60, 352 64" class="g" marker-end="url(#ph)"/></g>
+
+  <!-- 2: change -->
+  <g filter="url(#pencil)">
+    <rect x="360" y="22" width="232" height="86" rx="10" class="g" style="fill:#fbecdf"/>
+    <rect x="363" y="25" width="228" height="82" rx="10" class="g2"/>
+  </g>
+  <text x="476" y="50" text-anchor="middle" class="hand t">2 · change the genome</text>
+  <text x="476" y="72" text-anchor="middle" class="hand s">an LLM reads why 3 failed,</text>
+  <text x="476" y="93" text-anchor="middle" class="hand s">edits prompt / skill / lesson</text>
+
+  <g filter="url(#pencil2)"><path d="M476 110 C 472 128, 474 138, 476 152" class="g" marker-end="url(#ph)"/></g>
+
+  <!-- 3a: easy -->
+  <g filter="url(#pencil)">
+    <rect x="360" y="158" width="232" height="70" rx="10" class="g" style="fill:#e8f1ea"/>
+    <rect x="363" y="161" width="228" height="66" rx="10" class="g2"/>
+  </g>
+  <text x="476" y="185" text-anchor="middle" class="hand t">3 · 3 easy problems</text>
+  <text x="476" y="208" text-anchor="middle" class="hand s">still solves them all?</text>
+
+  <!-- bin -->
+  <g filter="url(#pencil2)"><path d="M358 194 C 300 196, 250 194, 214 194" class="g" marker-end="url(#ph)"/></g>
+  <text x="290" y="184" text-anchor="middle" class="hand n">no</text>
+  <g filter="url(#pencil)">
+    <path d="M150 172 L206 172 M156 172 L162 228 L194 228 L200 172 M168 182 L170 220 M178 182 L178 220 M188 182 L186 220 M168 172 L170 164 L186 164 L188 172" class="g"/>
+  </g>
+  <text x="100" y="200" text-anchor="middle" class="hand s">throw it</text>
+  <text x="100" y="218" text-anchor="middle" class="hand s">away (~$1)</text>
+
+  <g filter="url(#pencil2)"><path d="M476 230 C 479 246, 474 256, 476 270" class="g" marker-end="url(#ph)"/></g>
+  <text x="490" y="254" class="hand n">yes</text>
+
+  <!-- 3b: hard -->
+  <g filter="url(#pencil)">
+    <rect x="360" y="276" width="232" height="70" rx="10" class="g" style="fill:#e8f1ea"/>
+    <rect x="363" y="279" width="228" height="66" rx="10" class="g2"/>
+  </g>
+  <text x="476" y="303" text-anchor="middle" class="hand t">10 hard problems</text>
+  <text x="476" y="326" text-anchor="middle" class="hand s">beats 7/10?</text>
+
+  <g filter="url(#pencil2)"><path d="M476 348 C 473 364, 478 374, 476 388" class="g" marker-end="url(#ph)"/></g>
+  <text x="490" y="372" class="hand n">yes</text>
+
+  <!-- 4: unseen -->
+  <g filter="url(#pencil)">
+    <rect x="360" y="394" width="232" height="70" rx="10" class="g" style="fill:#ece6f6"/>
+    <rect x="363" y="397" width="228" height="66" rx="10" class="g2"/>
+  </g>
+  <text x="476" y="421" text-anchor="middle" class="hand t">4 · 10 unseen hard</text>
+  <text x="476" y="444" text-anchor="middle" class="hand s">better there too?</text>
+
+  <!-- champion -->
+  <g filter="url(#pencil2)"><path d="M358 430 C 300 432, 260 430, 236 430" class="g" marker-end="url(#ph)"/></g>
+  <text x="300" y="420" text-anchor="middle" class="hand n">yes</text>
+  <g filter="url(#pencil)">
+    <rect x="22" y="394" width="208" height="76" rx="10" class="g" style="fill:#fff3c4"/>
+    <rect x="25" y="397" width="204" height="72" rx="10" class="g2"/>
+    <path d="M52 412 L57 424 L70 425 L60 433 L63 446 L52 439 L41 446 L44 433 L34 425 L47 424 Z" class="g" style="fill:#f4d35e"/>
+  </g>
+  <text x="140" y="424" text-anchor="middle" class="hand t">new champion</text>
+  <text x="140" y="447" text-anchor="middle" class="hand s">the version we ship</text>
+
+  <!-- repeat loop on the right -->
+  <g filter="url(#pencil2)">
+    <path d="M594 311 C 640 311, 650 300, 652 250 M594 429 C 650 429, 660 400, 660 300 C 660 200, 662 120, 640 70 C 630 60, 612 62, 598 64" class="g" marker-end="url(#ph)"/>
+  </g>
+  <text x="606" y="303" class="hand n">no</text>
+  <text x="606" y="421" class="hand n">no</text>
+  <text x="676" y="250" text-anchor="middle" class="hand s" transform="rotate(90 676 250)">5 · repeat: keep it in the archive, try another change</text>
+  <g filter="url(#pencil2)"><path d="M140 474 C 140 492, 300 500, 640 498 C 664 496, 668 480, 662 440" class="g2" style="stroke-dasharray:5 5"/></g>
+  <text x="300" y="512" text-anchor="middle" class="hand s">the champion is a parent for the next change too</text>
+</svg>
+<figcaption>Figure 0. One iteration, in pencil. Each trip around the loop costs between about $1 (fails the easy check) and about $21 (goes all the way to the unseen problems).</figcaption>
+</figure>
+
+<h3>What it costs</h3>
+<p>Measured prices from the earlier benchmark runs (claude-opus-5, 60-turn cap): <b>a hard problem costs about $1</b> per agent run, an easy one about $0.35. Scoring runs locally in Docker and costs nothing. The LLM that proposes each change costs cents.</p>
+<table>
+  <tr><th>Step</th><th style="width:22%">Agent runs</th><th style="width:16%">Cost</th></tr>
+  <tr><td>Generation 0: 3 easy + 10 hard + 10 unseen hard (paid once)</td><td>23</td><td>≈ $21</td></tr>
+  <tr><td>An iteration thrown away at the easy check</td><td>3</td><td>≈ $1</td></tr>
+  <tr><td>An iteration that runs the 10 hard but does not beat the best</td><td>13</td><td>≈ $11</td></tr>
+  <tr><td>An iteration that also runs the 10 unseen hard</td><td>23</td><td>≈ $21</td></tr>
+  <tr><td>A change the guards reject before running anything (duplicate, broken edit)</td><td>0</td><td>$0</td></tr>
+</table>
+<div class="box green">
+<p><b>Total for a first run of 5 iterations: about $75</b> in a typical mix, with a floor of about $26 (every change fails the easy check) and a ceiling of about $130 (every change goes all the way). Add about $10 to re-run the final champion on the unseen problems once, to confirm it was not luck. Wall time is about 3 to 5 hours with two tasks in parallel.</p>
+<p><b>For 10 iterations: about $135 typical</b>, between $31 and $235.</p>
+</div>
+<p class="small">These are estimates, not caps. An evolved prompt that makes the agent work longer raises the per-problem cost, and a hard problem can run to the 60-turn limit. A run can be stopped at any moment and resumed later, losing nothing that has finished.</p>
+
+<!-- ───────────────────────────── 1 ───────────────────────────── -->
+<h2 class="page-break">1 · Why a self-evolving layer</h2>
+
+<p>An agent is a harness plus a model. tinyorbit already owns the harness: the loop, the tools, the permission chain, the system prompt. When the agent fails a task, the failure usually lives in that harness text, not in the weights. The prompt never told it to reproduce the bug before fixing it. A tool description invites a lazy use. No lesson says "your own new test passing is not proof." Those are cheap to change and expensive to find by hand.</p>
+
+<p>The self-evolving agent stack is usually drawn in layers, ordered from cheapest and safest to most powerful and riskiest:</p>
+
+<table>
+  <tr><th style="width:23%">Layer</th><th>What changes</th><th style="width:30%">In tinyorbit</th></tr>
+  <tr><td><b>Skills and memory</b></td><td>Text the agent reads: lessons, playbooks, standing instructions</td><td><b>Built.</b> <code>lessons.md</code>, <code>memory.md</code>, <code>skills/</code></td></tr>
+  <tr><td><b>Harness</b></td><td>The system prompt and tool descriptions</td><td><b>Built.</b> <code>system_prompt.md</code>, <code>tools/*.md</code></td></tr>
+  <tr><td>Harness code</td><td>The loop and tools themselves</td><td>Not yet. Sandboxing needed first</td></tr>
+  <tr><td>Weights</td><td>Fine-tuning on the agent's own trajectories</td><td>Out of scope: the model is frozen</td></tr>
+  <tr><td>Environment and orchestration</td><td>Curricula, task generation, multi-agent topologies</td><td>Out of scope for now</td></tr>
+</table>
+
+<p>evolve starts at the narrowest surface that can fix a real failure: <b>editable text around a frozen model</b>. Every variant is Markdown. It can be read, diffed, reviewed, reverted and versioned in git. Nothing evolved is executable, so a bad generation can lower a score but cannot break the machine.</p>
+
+<div class="box orange">
+<p><b>The central risk is that the loop fools itself.</b> A system that edits its own instructions against a 10-task benchmark will find edits that fit those 10 tasks. Three mechanisms exist to stop that, and they recur throughout this document. First, a <b>held-out gate</b>: a change is promoted only if it also improves a disjoint task split whose failures the mutator never sees. Second, a <b>size penalty</b>: fitness is charged for growth, so the cheapest way to fit the train set (appending task-specific hints) is taxed. Third, a <b>ledger</b>: every rejected idea is remembered and shown to the next proposer.</p>
+</div>
+
+<!-- ───────────────────────────── 2 ───────────────────────────── -->
+<h2>2 · The genome</h2>
+
+<p>A genome is a small directory of Markdown that the harness reads <em>on top of</em> its built-in defaults. It is the single artifact both loops evolve.</p>
+
+<table>
+  <tr><th style="width:28%">File</th><th>Role at run time</th></tr>
+  <tr><td><code>system_prompt.md</code></td><td>Replaces the static system prompt template. Must keep the <code>{cwd}</code> and <code>{platform}</code> placeholders. They are filled by plain string replacement, so stray braces in evolved text can never crash formatting.</td></tr>
+  <tr><td><code>memory.md</code></td><td>Harness-level standing instructions, loaded like a global <code>AGENTS.md</code>.</td></tr>
+  <tr><td><code>lessons.md</code></td><td>Lessons distilled from past runs (written by the inner loop), loaded as memory right after <code>memory.md</code>.</td></tr>
+  <tr><td><code>skills/&lt;name&gt;/SKILL.md</code><br><code>skills/&lt;name&gt;.md</code></td><td>Extra on-demand playbooks, same format as project skills. A project skill with the same name wins.</td></tr>
+  <tr><td><code>tools/&lt;ToolName&gt;.md</code></td><td>Replaces the description the model sees for that tool. Unknown tool names are ignored.</td></tr>
+</table>
+
+<h3>How a run picks it up</h3>
+<p><code>main.py --genome DIR</code> or <code>TINYORBIT_GENOME=DIR</code>. In <code>bootstrap.setup()</code> the overlay is loaded once and applied in a fixed order:</p>
+
+<figure>
+<svg viewBox="0 0 700 150" width="100%">
+  <defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#5b6476"/></marker></defs>
+  <g font-size="11">
+    <rect x="5" y="40" width="120" height="60" rx="6" fill="#efe8fb" stroke="#8156d6"/>
+    <text x="65" y="66" text-anchor="middle" font-weight="600">genome dir</text>
+    <text x="65" y="83" text-anchor="middle" fill="#5f3bad">load_overlay()</text>
+    <line x1="125" y1="70" x2="165" y2="70" stroke="#5b6476" marker-end="url(#a)"/>
+
+    <rect x="170" y="5" width="250" height="32" rx="5" fill="#eaf2fc" stroke="#2a78d6"/>
+    <text x="180" y="25">system_prompt.md → prompt template</text>
+    <rect x="170" y="42" width="250" height="32" rx="5" fill="#eaf2fc" stroke="#2a78d6"/>
+    <text x="180" y="62">memory.md, lessons.md → memory (first)</text>
+    <rect x="170" y="79" width="250" height="32" rx="5" fill="#eaf2fc" stroke="#2a78d6"/>
+    <text x="180" y="99">skills/ → Skill tool (project wins)</text>
+    <rect x="170" y="116" width="250" height="32" rx="5" fill="#eaf2fc" stroke="#2a78d6"/>
+    <text x="180" y="136">tools/*.md → tool descriptions</text>
+
+    <line x1="420" y1="70" x2="465" y2="70" stroke="#5b6476" marker-end="url(#a)"/>
+    <rect x="470" y="30" width="225" height="80" rx="6" fill="#e3f5ee" stroke="#1baf7a"/>
+    <text x="582" y="55" text-anchor="middle" font-weight="600">system prompt + tool pool</text>
+    <text x="582" y="74" text-anchor="middle" fill="#117853">harness memory → project memory</text>
+    <text x="582" y="92" text-anchor="middle" fill="#117853">(the project still has the last word)</text>
+  </g>
+</svg>
+<figcaption>Figure 1. The overlay. Genome memory is injected <em>before</em> project memory, so a repository's own <code>AGENTS.md</code> still overrides evolved harness rules.</figcaption>
+</figure>
+
+<p>The overlay is not trust-gated the way project files are, because the operator passes it explicitly. It cannot escape its own directory: <code>Genome.save()</code> and every edit go through a <b>path whitelist</b> (a regex over exactly the five layouts above). An evolved edit to <code>../main.py</code> or <code>tools/../../x</code> is rejected before it is written.</p>
+
+<h3>Generation 0 is today's harness, byte for byte</h3>
+<p><code>python -m tinyorbit.evolve seed DIR</code> exports the built-in prompt template and every tool's description as a genome. A test asserts that running with this seed produces the <em>identical</em> system prompt and tool schemas as running with no genome. This matters more than it looks. If the seed differed even slightly from the shipped harness, every evolved score would be measured against a baseline that never existed.</p>
+
+<p>A genome has a <b>fingerprint</b> (the first 16 hex digits of a SHA-256 over its sorted files) and a <b>size</b> (its total characters). The fingerprint makes evaluation memoisable and deduplication free. The size feeds the penalty and the archive's grid.</p>
+
+<!-- ───────────────────────────── 3 ───────────────────────────── -->
+<h2>3 · Inner loop: reflection</h2>
+
+<p>The inner loop is the cheap, per-run step: one extra model call after a session ends. It turns a finished trajectory into at most three general lessons in <code>lessons.md</code>, which the next run loads as memory. No weights change. This is online self-improvement through context.</p>
+
+<figure>
+<svg viewBox="0 0 700 95" width="100%">
+  <defs><marker id="b" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#5b6476"/></marker></defs>
+  <g font-size="11" text-anchor="middle">
+    <rect x="5" y="20" width="115" height="52" rx="6" fill="#eaf2fc" stroke="#2a78d6"/><text x="62" y="42" font-weight="600">session ends</text><text x="62" y="58" fill="#1c5cab">messages + outcome</text>
+    <line x1="120" y1="46" x2="148" y2="46" stroke="#5b6476" marker-end="url(#b)"/>
+    <rect x="152" y="20" width="125" height="52" rx="6" fill="#eaf2fc" stroke="#2a78d6"/><text x="214" y="42" font-weight="600">condense</text><text x="214" y="58" fill="#1c5cab">head ⅓ + tail ⅔, 24k chars</text>
+    <line x1="277" y1="46" x2="305" y2="46" stroke="#5b6476" marker-end="url(#b)"/>
+    <rect x="309" y="20" width="125" height="52" rx="6" fill="#fcebe2" stroke="#eb6834"/><text x="371" y="42" font-weight="600">reflect (1 call)</text><text x="371" y="58" fill="#b04a1f">JSON: title + lesson</text>
+    <line x1="434" y1="46" x2="462" y2="46" stroke="#5b6476" marker-end="url(#b)"/>
+    <rect x="466" y="20" width="110" height="52" rx="6" fill="#efe8fb" stroke="#8156d6"/><text x="521" y="42" font-weight="600">merge</text><text x="521" y="58" fill="#5f3bad">dedupe, cap 20</text>
+    <line x1="576" y1="46" x2="604" y2="46" stroke="#5b6476" marker-end="url(#b)"/>
+    <rect x="608" y="20" width="88" height="52" rx="6" fill="#e3f5ee" stroke="#1baf7a"/><text x="652" y="42" font-weight="600">lessons.md</text><text x="652" y="58" fill="#117853">next run's memory</text>
+  </g>
+</svg>
+<figcaption>Figure 2. One reflection. The transcript is condensed to keep the task statement and the ending (where the mistakes usually are), with "[N steps omitted]" in between.</figcaption>
+</figure>
+
+<p>Two guards keep the lessons file from rotting:</p>
+<ul>
+  <li><b>Verified outcomes beat self-reports.</b> The reflector is told what actually happened. Live, in <code>--print --genome DIR --reflect</code> mode, the only signal is the agent's own exit reason, labelled <i>"self-reported, unverified"</i>. Offline, <code>python -m tinyorbit.evolve reflect --transcript T --outcome failed --feedback "FAIL_TO_PASS still red"</code> passes the ground truth. That is worth far more, because the most common failure is an agent sincerely believing it succeeded.</li>
+  <li><b>A bounded, deduplicated book.</b> Lessons are keyed by their normalized title. A new lesson with a known title replaces the old one and moves to the end. Past 20 lessons the oldest fall off. Known lessons are shown to the reflector so it does not restate them, and malformed items are dropped. The file format is a plain Markdown list with provenance in an HTML comment:</li>
+</ul>
+<pre><code># Lessons learned
+
+Distilled from past runs of this agent. Apply a lesson when its situation matches.
+
+- **Reproduce before fixing**: Write a failing test from the issue text first; a new test that passes proves nothing. &lt;!-- outcome=failed source=astropy__astropy-13398 --&gt;</code></pre>
+
+<p>Because lessons live in the genome, the outer loop can also rewrite, merge or delete them like any other artifact. Reflection adds; evolution curates.</p>
+
+<!-- ───────────────────────────── 4 ───────────────────────────── -->
+<h2 class="page-break">4 · Outer loop: the evolutionary search</h2>
+
+<p>The outer loop searches over whole genomes. It is a clean-room implementation of the archive-plus-islands pattern popularized by program-evolution systems: an LLM proposes diffs, an evaluator scores them, and an archive keeps a diverse population rather than a single best. It lives in <code>loop.py</code> (the driver), <code>mutate.py</code> (the proposer), <code>edits.py</code> (the diff format) and <code>archive.py</code> (the population).</p>
+
+<figure>
+<svg viewBox="0 0 700 430" width="100%">
+  <defs><marker id="c" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#5b6476"/></marker></defs>
+  <g font-size="11">
+    <!-- seed -->
+    <rect x="10" y="8" width="200" height="50" rx="6" fill="#efe8fb" stroke="#8156d6"/>
+    <text x="110" y="29" text-anchor="middle" font-weight="600">seed genome (generation 0)</text>
+    <text x="110" y="46" text-anchor="middle" fill="#5f3bad">all stages + held-out → champion</text>
+    <line x1="110" y1="58" x2="110" y2="80" stroke="#5b6476" marker-end="url(#c)"/>
+
+    <!-- loop box -->
+    <rect x="5" y="84" width="460" height="338" rx="8" fill="none" stroke="#9aa3b5" stroke-dasharray="4 3"/>
+    <text x="16" y="101" fill="#5b6476" font-size="10">every iteration (checkpointed)</text>
+
+    <rect x="20" y="110" width="180" height="44" rx="6" fill="#eaf2fc" stroke="#2a78d6"/>
+    <text x="110" y="129" text-anchor="middle" font-weight="600">1 · pick island, parent</text>
+    <text x="110" y="145" text-anchor="middle" fill="#1c5cab">round-robin; elite / random / best</text>
+    <line x1="200" y1="132" x2="240" y2="132" stroke="#5b6476" marker-end="url(#c)"/>
+
+    <rect x="245" y="110" width="205" height="44" rx="6" fill="#fcebe2" stroke="#eb6834"/>
+    <text x="347" y="129" text-anchor="middle" font-weight="600">2 · mutate (1 LLM call)</text>
+    <text x="347" y="145" text-anchor="middle" fill="#b04a1f">failures + ledger + inspirations</text>
+    <line x1="347" y1="154" x2="347" y2="178" stroke="#5b6476" marker-end="url(#c)"/>
+
+    <rect x="245" y="182" width="205" height="44" rx="6" fill="#eaf2fc" stroke="#2a78d6"/>
+    <text x="347" y="201" text-anchor="middle" font-weight="600">3 · apply edits + guards</text>
+    <text x="347" y="217" text-anchor="middle" fill="#1c5cab">no-op, size, placeholders, duplicate</text>
+    <line x1="347" y1="226" x2="347" y2="250" stroke="#5b6476" marker-end="url(#c)"/>
+    <line x1="245" y1="204" x2="200" y2="204" stroke="#b04a1f" marker-end="url(#c)"/>
+    <text x="120" y="200" text-anchor="middle" fill="#b04a1f" font-size="10">invalid → ledger</text>
+    <text x="120" y="213" text-anchor="middle" fill="#b04a1f" font-size="10">(no evaluation spent)</text>
+
+    <rect x="245" y="254" width="205" height="44" rx="6" fill="#e3f5ee" stroke="#1baf7a"/>
+    <text x="347" y="273" text-anchor="middle" font-weight="600">4 · cascade: smoke → train</text>
+    <text x="347" y="289" text-anchor="middle" fill="#117853">stop at the first missed threshold</text>
+    <line x1="347" y1="298" x2="347" y2="322" stroke="#5b6476" marker-end="url(#c)"/>
+    <line x1="245" y1="276" x2="200" y2="276" stroke="#b04a1f" marker-end="url(#c)"/>
+    <text x="120" y="272" text-anchor="middle" fill="#b04a1f" font-size="10">rejected → archive</text>
+    <text x="120" y="285" text-anchor="middle" fill="#b04a1f" font-size="10">(not a parent), ledger</text>
+
+    <rect x="245" y="326" width="205" height="44" rx="6" fill="#efe8fb" stroke="#8156d6"/>
+    <text x="347" y="345" text-anchor="middle" font-weight="600">5 · fitness → archive cell</text>
+    <text x="347" y="361" text-anchor="middle" fill="#5f3bad">train − penalty × growth</text>
+    <line x1="245" y1="348" x2="200" y2="348" stroke="#5b6476" marker-end="url(#c)"/>
+
+    <rect x="20" y="326" width="180" height="44" rx="6" fill="#fcebe2" stroke="#eb6834"/>
+    <text x="110" y="345" text-anchor="middle" font-weight="600">6 · promotion gate</text>
+    <text x="110" y="361" text-anchor="middle" fill="#b04a1f">beats champion on fitness?</text>
+    <line x1="110" y1="370" x2="110" y2="390" stroke="#5b6476" marker-end="url(#c)"/>
+    <text x="110" y="406" text-anchor="middle" font-size="10" fill="#1d2330">then held-out &gt; champion + margin?</text>
+    <path d="M20 348 L12 348 L12 132 L16 132" fill="none" stroke="#5b6476" stroke-dasharray="3 3" marker-end="url(#c)"/>
+    <text x="22" y="245" fill="#5b6476" font-size="10" transform="rotate(-90 22 245)" text-anchor="middle">next iteration</text>
+
+    <!-- right side: archive -->
+    <rect x="485" y="84" width="205" height="338" rx="8" fill="#f7f5fd" stroke="#8156d6"/>
+    <text x="587" y="104" text-anchor="middle" font-weight="600">archive</text>
+    <text x="500" y="126" font-size="10" fill="#5f3bad">island 0 grid (size × cost)</text>
+    <g transform="translate(500,132)">
+      <rect width="34" height="26" fill="#fff" stroke="#c9bdf0"/><rect x="34" width="34" height="26" fill="#d9ccf7" stroke="#c9bdf0"/><rect x="68" width="34" height="26" fill="#fff" stroke="#c9bdf0"/><rect x="102" width="34" height="26" fill="#fff" stroke="#c9bdf0"/>
+      <rect y="26" width="34" height="26" fill="#d9ccf7" stroke="#c9bdf0"/><rect x="34" y="26" width="34" height="26" fill="#8f73dc" stroke="#c9bdf0"/><rect x="68" y="26" width="34" height="26" fill="#d9ccf7" stroke="#c9bdf0"/><rect x="102" y="26" width="34" height="26" fill="#fff" stroke="#c9bdf0"/>
+    </g>
+    <text x="500" y="210" font-size="10" fill="#5f3bad">island 1 grid</text>
+    <g transform="translate(500,216)">
+      <rect width="34" height="26" fill="#fff" stroke="#c9bdf0"/><rect x="34" width="34" height="26" fill="#fff" stroke="#c9bdf0"/><rect x="68" width="34" height="26" fill="#d9ccf7" stroke="#c9bdf0"/><rect x="102" width="34" height="26" fill="#fff" stroke="#c9bdf0"/>
+      <rect y="26" width="34" height="26" fill="#fff" stroke="#c9bdf0"/><rect x="34" y="26" width="34" height="26" fill="#8f73dc" stroke="#c9bdf0"/><rect x="68" y="26" width="34" height="26" fill="#d9ccf7" stroke="#c9bdf0"/><rect x="102" y="26" width="34" height="26" fill="#fff" stroke="#c9bdf0"/>
+    </g>
+    <path d="M650 160 C 680 175, 680 225, 650 240" fill="none" stroke="#8156d6" marker-end="url(#c)"/>
+    <text x="600" y="205" font-size="9" fill="#5f3bad">ring migration</text>
+    <text x="500" y="296" font-size="10">ledger.jsonl: every attempt</text>
+    <text x="500" y="313" font-size="10">genomes/&lt;id&gt;/: every variant</text>
+    <text x="500" y="330" font-size="10">archive.json: grid, iteration</text>
+    <rect x="500" y="345" width="175" height="40" rx="5" fill="#e3f5ee" stroke="#1baf7a"/>
+    <text x="587" y="362" text-anchor="middle" font-weight="600">champion/</text>
+    <text x="587" y="377" text-anchor="middle" font-size="10" fill="#117853">ready for --genome</text>
+  </g>
+</svg>
+<figcaption>Figure 3. The outer loop. Cheap rejections happen first (guards cost nothing, smoke costs three tasks). The held-out split is spent only on a candidate that would otherwise become champion.</figcaption>
+</figure>
+
+<h3>4.1 Seeding</h3>
+<p>The seed is evaluated on <em>every</em> stage regardless of thresholds, plus the held-out split. It is the yardstick. Its size and per-task cost become the archive's reference point for binning. It is placed in every island so none starts empty, and it becomes the first champion. Its fitness is its raw train score (it has no growth to penalize).</p>
+
+<h3>4.2 Choosing a parent</h3>
+<p>Islands are visited round-robin (<code>iteration mod islands</code>). Within the island, <code>sample_parent</code> draws a random number:</p>
+<ul>
+  <li><b>50%: exploit.</b> A random elite, meaning the best occupant of one of the island's grid cells.</li>
+  <li><b>30%: explore.</b> Any pooled candidate on the island, elite or not.</li>
+  <li><b>20%: global best.</b> The fittest pooled candidate in the whole archive.</li>
+</ul>
+<p>The random generator is reseeded with <code>"&lt;rng_seed&gt;:&lt;iteration&gt;"</code> each run, so a resumed run does not replay the choices from iteration 0, and two runs with the same seed and evaluator make the same selections.</p>
+
+<h3>4.3 The mutation prompt</h3>
+<p>One LLM call per iteration (default <code>claude-opus-5</code>). The system prompt explains the five artifacts and four rules: diagnose the failure that <em>recurs</em> and make 1 to 3 focused edits; <b>generalize</b> and never name a specific repository, issue, file, test or answer; <b>shorter is better</b>, prefer rewriting or deleting to appending; never repeat an attempt the ledger shows was rejected. The user message carries four things:</p>
+<table>
+  <tr><th style="width:24%">Section</th><th>Content and caps</th><th style="width:26%">Pattern</th></tr>
+  <tr><td>Parent genome</td><td>Every file in full, with its stage scores and fitness</td><td>What to change</td></tr>
+  <tr><td>Failure reports</td><td>Up to 6 failures: task id, one-line summary, up to 1,500 chars of detail (failing tests, condensed transcript)</td><td>Trace-mined diagnosis</td></tr>
+  <tr><td>Attempt ledger</td><td>Last 20 attempts: summary, outcome, fitness delta, rejection reason</td><td>Failure wiki: don't retry dead ends</td></tr>
+  <tr><td>Inspirations</td><td>Two strong, different elites; only the files that differ from the parent, up to 3,000 chars</td><td>Recombination of prior art</td></tr>
+</table>
+
+<h3>4.4 The edit format</h3>
+<p>The mutator answers with a summary line and one or more blocks:</p>
+<pre><code>&lt;summary&gt;Require a failing reproduction before any fix&lt;/summary&gt;
+&lt;&lt;&lt;&lt;&lt;&lt;&lt; SEARCH system_prompt.md
+- Keep replies brief.
+=======
+- Keep replies brief.
+- Before editing, write a test from the issue text and watch it fail.
+&gt;&gt;&gt;&gt;&gt;&gt;&gt; REPLACE</code></pre>
+<p>Diffs, not whole-file rewrites, because they keep the parent's text that already works and keep proposals small. <code>apply_edits</code> is strict where it matters and lenient where models are sloppy:</p>
+<ul>
+  <li>An <b>empty SEARCH</b> writes the whole file (how new skills and lessons are created).</li>
+  <li>An <b>exact unique match</b> is replaced. A SEARCH that matches more than once is rejected, because guessing which one was meant is worse than failing.</li>
+  <li>No exact match falls back to a <b>whitespace-tolerant</b> line match (each line stripped), which must also be unique.</li>
+  <li>Anything else (text not found, a path outside the whitelist, editing a file that does not exist) raises <code>EditError</code>. The iteration is logged as <i>invalid</i> with the reason, which the next mutator sees.</li>
+</ul>
+
+<h3>4.5 Guards: free rejections</h3>
+<p>Before any evaluation is paid for, the child must pass four model-free checks: it is not a <b>no-op</b> (fingerprint unchanged); it is under the <b>size cap</b> (60,000 chars); the system prompt has not <b>lost a placeholder</b> it had; and it is not a <b>duplicate</b> of any candidate already in the archive (fingerprint lookup). On a real benchmark each guard hit saves about $10 to $20.</p>
+
+<h3>4.6 The cascade</h3>
+<p>Stages run in order and each has a minimum score, e.g. <code>--stages smoke:0.67,train</code>. A child that drops below a threshold stops there and is filed as <i>rejected</i>. It stays in the archive and the ledger, but it can never be a parent. On SWE-bench, the smoke stage is three easy tasks the default harness solves. An edit that breaks the agent outright costs three agent runs to discover, not thirteen.</p>
+
+<h3>4.7 Fitness</h3>
+<div class="box purple">
+<p style="font-family: 'SF Mono', Menlo, monospace; font-size: 10pt; margin-bottom:4pt">fitness = score<sub>last stage</sub> − size_penalty × max(0, size − seed_size) / 1000</p>
+<p>With the default penalty of 0.01, growing the genome by 10,000 characters costs 0.1, which on a 10-task stage is exactly one task. Shrinking is never penalized and never rewarded directly. It wins ties instead: when two candidates have equal fitness, the archive prefers the smaller one. This is the regularized objective. Without it, the easiest route to a higher train score is appending ever more specific advice.</p>
+</div>
+
+<h3>4.8 The archive: MAP-Elites with islands</h3>
+<p>Greedy hill-climbing on a noisy benchmark locks onto the first lucky variant. The archive keeps an open-ended population instead (the Darwin Gödel Machine argument) and organizes it the MAP-Elites way. Each pooled candidate is binned along two <b>behavior features</b> relative to the seed: <b>genome size</b> and <b>per-task run cost</b>. There are 4 bins per feature spanning 0 to 2× the seed's value, so the seed itself sits mid-range. Each cell of each island's grid keeps only its best occupant. So a lean, cheap variant and a verbose, thorough one survive side by side even when the lean one scores slightly lower, and a later mutation can build on the lean one.</p>
+<p><b>Islands</b> are independent sub-populations searched in turn (default 2). Every 5 iterations, <b>ring migration</b> copies each island's best into the next island's grid. A good idea spreads, but no single lineage takes over the archive early.</p>
+
+<h3>4.9 The promotion gate</h3>
+<p>Every pooled child gets a cell, but only one candidate is <b>champion</b>, and that is what ships. Promotion is a two-step check:</p>
+<ol>
+  <li>The child's train fitness must strictly beat the champion's. If not, stop: no held-out tasks are spent.</li>
+  <li>Run the held-out stage. The child is promoted only if <code>holdout &gt; champion.holdout + holdout_margin</code>.</li>
+</ol>
+<p>Held-out failures are never stored on the candidate or shown to the mutator; only the score is kept. That is what makes the split held-out. When a child is promoted, its genome is copied to <code>&lt;run&gt;/champion/</code>.</p>
+
+<h3>4.10 The ledger and resumability</h3>
+<p>Every iteration appends one JSON line to <code>ledger.jsonl</code>. Each line records the iteration, parent, island and summary, plus an outcome of <code>seed</code>, <code>champion</code>, <code>pooled</code>, <code>rejected</code> or <code>invalid</code>, with the score, fitness, delta against the parent, held-out score and reason. <code>archive.json</code> is written atomically (temp file, then rename) after every iteration. Killing the process at any point and rerunning the same command continues from the last completed iteration, without re-evaluating the seed.</p>
+
+<!-- ───────────────────────────── 5 ───────────────────────────── -->
+<h2>5 · The evaluator contract</h2>
+<p>The loop never knows what a benchmark is. An evaluator is any object with one method:</p>
+<pre><code>class Evaluator(Protocol):
+    async def evaluate(self, genome: Genome, stage: str) -&gt; EvalResult: ...
+
+@dataclass
+class EvalResult:
+    score: float                      # in [0, 1]
+    metrics: dict[str, float]         # "cost_usd" (per task) feeds the archive grid
+    failures: list[Failure]           # (task, summary, detail): what the mutator reads next
+    cost_usd: float                   # total spend for this evaluation</code></pre>
+<p>It is loaded from <code>--evaluator module:factory</code> or <code>--evaluator path/to/file.py:factory</code> with <code>--arg key=value</code> keyword arguments. So benchmark code (Docker, swebench, task files) stays out of the open-source core entirely. <b>Failures are the most valuable part of the result</b>: a score says <em>that</em> a genome is worse; a failure report says <em>why</em>, and the why is what the next mutation acts on.</p>
+<p>The tests use a scripted fake evaluator whose score depends on what the genome says. It rewards "run the tests", breaks on "BROKEN" at the smoke stage, and rewards "OVERFIT" on train but punishes it on held-out. The full loop test asserts the exact ledger <code>seed → champion → invalid → rejected → pooled</code>: the overfit child improves train fitness but is held back by the held-out gate.</p>
+
+<!-- ───────────────────────────── 6 ───────────────────────────── -->
+<h2 class="page-break">6 · SWE-bench as the evaluator</h2>
+
+<p><code>bench/evolve_eval.py</code> implements the contract on SWE-bench Verified: real GitHub issues, one Docker container per task, judged by the repository's hidden tests (<code>FAIL_TO_PASS</code> must pass, <code>PASS_TO_PASS</code> must keep passing).</p>
+
+<h3>6.1 Frozen splits</h3>
+<table>
+  <tr><th style="width:14%">Stage</th><th style="width:26%">File</th><th>What it is</th><th style="width:22%">Role</th></tr>
+  <tr><td>smoke</td><td><code>tasks-smoke3.json</code></td><td>3 easy tasks the default harness resolves</td><td>Did the edit break it?</td></tr>
+  <tr><td>train</td><td><code>tasks-hard10.json</code></td><td>10 from the 1 to 4 h and &gt;4 h tail, stratified by repo. Default harness: 7/10</td><td>Fitness, and the failures the mutator reads</td></tr>
+  <tr><td>holdout</td><td><code>tasks-holdout10.json</code></td><td>10 more from the same tail, disjoint from every other set, one per repo before any repeats (<code>make_split.py --seed 7</code>)</td><td>Promotion gate; score only</td></tr>
+</table>
+<p>The held-out split is drawn from the same difficulty bands as train, so "generalizes" means "to unseen tasks of the same kind," not "to easier ones." The easy ten are deliberately <em>not</em> a training stage: the default harness already solves 10/10, so they carry no gradient, only a breakage signal. <code>make_split.py</code> refuses to overwrite an existing split. A split that changes breaks comparability across every generation scored on it.</p>
+
+<h3>6.2 One evaluation, end to end</h3>
+<figure>
+<svg viewBox="0 0 700 250" width="100%">
+  <defs><marker id="d" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#5b6476"/></marker></defs>
+  <g font-size="10.5">
+    <rect x="5" y="10" width="160" height="56" rx="6" fill="#efe8fb" stroke="#8156d6"/>
+    <text x="85" y="31" text-anchor="middle" font-weight="600">evaluate(genome, "train")</text>
+    <text x="85" y="47" text-anchor="middle" fill="#5f3bad">run id = evo-&lt;fp&gt;-train-&lt;cfg&gt;</text>
+    <text x="85" y="60" text-anchor="middle" fill="#5f3bad">scores.json there? → reuse</text>
+    <line x1="165" y1="38" x2="195" y2="38" stroke="#5b6476" marker-end="url(#d)"/>
+
+    <rect x="200" y="10" width="200" height="56" rx="6" fill="#eaf2fc" stroke="#2a78d6"/>
+    <text x="300" y="31" text-anchor="middle" font-weight="600">run.py (bench venv)</text>
+    <text x="300" y="47" text-anchor="middle" fill="#1c5cab">--tasks --genome --run-id --score</text>
+    <text x="300" y="60" text-anchor="middle" fill="#1c5cab">--jobs N, skips finished instances</text>
+    <line x1="400" y1="38" x2="430" y2="38" stroke="#5b6476" marker-end="url(#d)"/>
+
+    <rect x="435" y="10" width="260" height="120" rx="6" fill="#e3f5ee" stroke="#1baf7a"/>
+    <text x="565" y="30" text-anchor="middle" font-weight="600">per task: one container</text>
+    <text x="447" y="50" fill="#117853">1  docker run swebench/sweb.eval.x86_64.&lt;id&gt;</text>
+    <text x="447" y="66" fill="#117853">2  copy tinyorbit → /opt/tinyorbit, uv sync</text>
+    <text x="447" y="82" fill="#117853">3  copy genome → /opt/tinyorbit-genome</text>
+    <text x="447" y="98" fill="#117853">4  main.py --print (TINYORBIT_GENOME set)</text>
+    <text x="447" y="114" fill="#117853">5  git diff /testbed → prediction line</text>
+
+    <line x1="565" y1="130" x2="565" y2="155" stroke="#5b6476" marker-end="url(#d)"/>
+    <rect x="435" y="160" width="260" height="80" rx="6" fill="#fcebe2" stroke="#eb6834"/>
+    <text x="565" y="180" text-anchor="middle" font-weight="600">swebench eval verified</text>
+    <text x="447" y="198" fill="#b04a1f">applies each patch in a fresh container,</text>
+    <text x="447" y="213" fill="#b04a1f">runs FAIL_TO_PASS + PASS_TO_PASS</text>
+    <text x="447" y="230" fill="#b04a1f">scoring.py → scores.json per instance</text>
+    <line x1="435" y1="200" x2="405" y2="200" stroke="#5b6476" marker-end="url(#d)"/>
+
+    <rect x="200" y="160" width="200" height="80" rx="6" fill="#efe8fb" stroke="#8156d6"/>
+    <text x="300" y="180" text-anchor="middle" font-weight="600">result_from_run</text>
+    <text x="212" y="198" fill="#5f3bad">score = resolved / total</text>
+    <text x="212" y="213" fill="#5f3bad">cost_usd metric = per task</text>
+    <text x="212" y="228" fill="#5f3bad">failures = tests + transcript</text>
+    <line x1="200" y1="200" x2="170" y2="200" stroke="#5b6476" marker-end="url(#d)"/>
+
+    <rect x="5" y="160" width="160" height="80" rx="6" fill="#fff" stroke="#b04a1f" stroke-dasharray="4 3"/>
+    <text x="85" y="182" text-anchor="middle" font-weight="600" fill="#b04a1f">never scored?</text>
+    <text x="85" y="199" text-anchor="middle" fill="#b04a1f">raise HarnessError</text>
+    <text x="85" y="214" text-anchor="middle" fill="#b04a1f">(not a miss); rerun</text>
+    <text x="85" y="229" text-anchor="middle" fill="#b04a1f">retries just that one</text>
+  </g>
+</svg>
+<figcaption>Figure 4. One stage evaluation. The genome is copied outside <code>/testbed</code>, so it can never leak into the model's patch.</figcaption>
+</figure>
+
+<h3>6.3 Memoisation and resume, at three levels</h3>
+<ul>
+  <li><b>Genome × stage.</b> The run id is content-addressed: <code>evo-&lt;genome fingerprint&gt;-&lt;stage&gt;-&lt;settings hash&gt;</code>, where the settings hash covers model, effort, turn cap and timeout. If two lineages arrive at the same text, or the loop is resumed after a crash, a finished stage is read from disk instead of being paid for again. Different settings never share a cache entry.</li>
+  <li><b>Instance.</b> <code>run.py</code> skips any instance already present in that run's <code>predictions.jsonl</code>. A stage interrupted after 6 of 10 tasks resumes at task 7.</li>
+  <li><b>Iteration.</b> The archive itself checkpoints after every iteration (§4.10).</li>
+</ul>
+
+<h3>6.4 Infrastructure noise is not a verdict</h3>
+<p>If a container fails to start, uv cannot install, or swebench errors on an instance, that instance has no prediction or no verdict. Counting it as unresolved would charge the genome for Docker's problem and, on 10 tasks, move its score by 0.1. So <code>result_from_run</code> raises <code>HarnessError</code> instead. The loop stops, nothing is recorded for that child, and rerunning the same command retries only the missing instance. An agent that times out or produces an empty patch is different: that is a genuine miss and is scored as one.</p>
+
+<h3>6.5 What a failure report looks like</h3>
+<p>For each unresolved instance the mutator receives a summary built from the swebench report and the run's <code>results.csv</code>, plus up to 6,000 chars of condensed transcript:</p>
+<pre><code>task:    astropy__astropy-13398
+summary: agent ended with 'completed' but the hidden tests disagree;
+         2 target test(s) still fail: test_altaz_with_refraction, ...;
+         1 previously passing test(s) broke: test_icrs_gcrs_roundtrip
+detail:  USER: &lt;issue&gt; ... ASSISTANT: ... [41 steps omitted] ... RESULT: 3 passed ...
+         ASSISTANT: The fix is complete and my new tests pass.</code></pre>
+<p>Patterns this exposes are exactly the kind the text layer can fix. The default harness's three hard-ten misses all share one: the agent declared success after passing tests it wrote itself, rather than first deriving a failing reproduction from the issue text.</p>
+
+<!-- ───────────────────────────── 7 ───────────────────────────── -->
+<h2 class="page-break">7 · End to end: a run, step by step</h2>
+
+<h3>7.1 Setup (once)</h3>
+<pre><code>uv sync --group dev                                   # tinyorbit + anthropic dialect
+cd bench &amp;&amp; uv venv .venv --python 3.11 \
+  &amp;&amp; uv pip install --python .venv/bin/python swebench  # the scorer, in its own venv
+export ANTHROPIC_API_KEY=...                          # agent runs and the mutator
+.venv/bin/python run.py --smoke                       # one container, no key: plumbing OK?</code></pre>
+
+<h3>7.2 Baseline, then evolve</h3>
+<pre><code># (optional) measure the default harness on held-out, standalone
+bench/.venv/bin/python bench/run.py --tasks bench/tasks-holdout10.json \
+    --run-id holdout-base --jobs 2 --score
+
+# generation 0 = today's prompt and tool docs, as an editable directory
+uv run python -m tinyorbit.evolve seed bench/logs/g0
+
+# the search
+uv run python -m tinyorbit.evolve run --out bench/logs/evo-1 --seed bench/logs/g0 \
+    --evaluator bench/evolve_eval.py:make --arg jobs=2 \
+    --stages smoke:0.67,train --holdout holdout --holdout-margin 0.1 \
+    --iterations 10 --islands 2 --rng-seed 0
+
+uv run python -m tinyorbit.evolve show --out bench/logs/evo-1     # leaderboard
+open bench/logs/evo-1/report.html                                # the run, explained
+diff -ru bench/logs/g0 bench/logs/evo-1/champion                 # what actually changed</code></pre>
+
+<h3>7.3 What one iteration does, concretely</h3>
+<ol>
+  <li>Iteration 3 → island 1. The draw lands in "exploit": parent <code>g0002</code>, an elite.</li>
+  <li>The mutator reads <code>g0002</code>'s files, its 3 train failures, the last 20 ledger lines (including "<i>g0001: added a verify skill, rejected: below train threshold</i>") and the two other best elites. It proposes one edit to <code>system_prompt.md</code> and one new <code>skills/reproduce/SKILL.md</code>.</li>
+  <li>Edits apply. Guards pass. The child becomes <code>g0004</code> with fingerprint <code>3f9c…</code>.</li>
+  <li>Smoke: <code>run.py</code> runs 3 containers with the child genome, then swebench scores them: 3/3 ≥ 0.67, continue. Train: 10 containers, 8/10.</li>
+  <li>Fitness = 0.8 − 0.01 × 1.2 (it grew 1,200 chars) = 0.788. Per-task cost $0.95 → cell <code>1|2|1</code>. It beats that cell's incumbent and takes the cell.</li>
+  <li>0.788 &gt; champion's 0.70 → spend the held-out stage: 7/10 against the champion's 6/10 with margin 0.1. 0.7 &gt; 0.6 + 0.1 is false, so no promotion. It stays pooled, a parent candidate for later. Ledger: <i>pooled, delta +0.088</i>.</li>
+  <li><code>archive.json</code> is written. Iteration 5 will trigger ring migration.</li>
+</ol>
+<p>Every one of those steps is also an event in <code>events.jsonl</code>: <code>iteration_start</code> (island, parent, pick mode, inspirations), <code>mutation</code> (summary, edits, cost, paths to the prompt, answer and diff), <code>stage_start</code>/<code>stage_end</code> (score, gate, minutes, cost, per-task verdicts, failures, run directory), <code>candidate</code> (fitness, size penalty, grid cell and who held it), <code>promotion</code> (yes or no, and why), <code>migration</code> and <code>iteration_end</code>. <code>report.py</code> replays that log into <code>report.html</code>, written for a reader who was not watching.</p>
+
+<h3>7.4 What lands on disk</h3>
+<div class="two">
+<pre><code>bench/logs/evo-1/            # the search
+  archive.json               # grid, candidates, champion
+  ledger.jsonl               # one line per attempt
+  events.jsonl               # every step, as it happens
+  iterations/NNNN/           # mutator prompt, answer, diff
+  report.html                # rewritten each iteration
+  genomes/g0000 … gNNNN/     # every variant
+  champion/                  # ship this</code></pre>
+<pre><code>bench/logs/evo-&lt;fp&gt;-train-&lt;cfg&gt;/   # one stage run
+  run.json  results.csv  predictions.jsonl
+  transcripts/  patches/
+  tinyorbit.&lt;run-id&gt;.json   logs/run_evaluation/…
+  scores.json               # the reduced verdicts
+bench/logs/evo-genomes/&lt;fp&gt;/      # genome as run</code></pre>
+</div>
+<p>All of <code>bench/logs/</code> is untracked: run records stay local. A champion worth keeping is copied out and committed deliberately, along with its scores, as a write-up in <code>reports/</code>.</p>
+
+<h3>7.5 Using the result</h3>
+<pre><code>uv run python main.py --genome bench/logs/evo-1/champion "fix the failing test"
+TINYORBIT_GENOME=bench/logs/evo-1/champion uv run python main.py --print "..."
+bench/.venv/bin/python bench/run.py --tasks ... --genome bench/logs/evo-1/champion --score</code></pre>
+<p>And the inner loop can keep refining a champion between evolution runs, from verified outcomes:</p>
+<pre><code>uv run python -m tinyorbit.evolve reflect --genome bench/logs/evo-1/champion \
+    --transcript bench/logs/&lt;run&gt;/transcripts/&lt;id&gt;.messages.json \
+    --outcome "failed" --feedback "FAIL_TO_PASS still failing: test_x"</code></pre>
+
+<!-- ───────────────────────────── 8 ───────────────────────────── -->
+<h2>8 · Design choices and where they come from</h2>
+<table>
+  <tr><th style="width:27%">Choice</th><th>Why</th><th style="width:25%">Pattern</th></tr>
+  <tr><td>Evolve text only; model frozen</td><td>Narrowest surface that fixes real failures; every variant inspectable and non-executable</td><td>Skill/harness layer of the self-evolving stack</td></tr>
+  <tr><td>Held-out promotion gate</td><td>Train improvements that do not transfer are rejected; held-out failures never reach the mutator</td><td>Validation-gated skill optimization</td></tr>
+  <tr><td>Ledger of rejected attempts</td><td>The proposer does not rediscover dead ends</td><td>Failure wiki</td></tr>
+  <tr><td>Size penalty; smaller wins ties</td><td>Taxes the cheapest overfit (append more hints)</td><td>Regularized self-improvement</td></tr>
+  <tr><td>Archive, not a single best</td><td>Noisy scores make greedy search lock onto luck</td><td>Darwin Gödel Machine open-endedness</td></tr>
+  <tr><td>MAP-Elites over size × cost</td><td>Keeps lean and thorough variants alive side by side</td><td>Quality-diversity search</td></tr>
+  <tr><td>Islands + ring migration</td><td>Parallel lineages; ideas spread without takeover</td><td>Island-model evolution</td></tr>
+  <tr><td>SEARCH/REPLACE diffs, fuzzy fallback</td><td>Small proposals, keep what works; tolerate whitespace slips, refuse ambiguity</td><td>Diff-based LLM mutation</td></tr>
+  <tr><td>Staged cascade</td><td>Spend 3 tasks to reject what 13 would</td><td>Cascade evaluation</td></tr>
+  <tr><td>Seed = shipped harness, tested</td><td>Every delta is measured against a baseline that existed</td><td>Behavior-preserving refactor</td></tr>
+  <tr><td>Content-addressed runs</td><td>Same genome is never paid for twice; crash-safe</td><td>Memoised evaluation</td></tr>
+  <tr><td>Harness errors raise</td><td>Docker noise is not a verdict on the genome</td><td>Fail loud, retry narrow</td></tr>
+  <tr><td>Evaluator by <code>file.py:factory</code></td><td>Benchmarks stay out of the dependency-free core</td><td>Plugin seam</td></tr>
+  <tr><td>Verified outcome into reflection</td><td>The agent's own "done" is the least reliable signal</td><td>Outcome-grounded reflection</td></tr>
+</table>
+
+<!-- ───────────────────────────── 9 ───────────────────────────── -->
+<h2>9 · Cost, noise and honest limits</h2>
+
+<h3>9.1 Budget</h3>
+<p>From the measured baselines: a hard-tail task costs about <b>$1.02</b> and <b>5.3 min</b> of agent time, and an easy task about <b>$0.34</b> and 2.5 min (claude-opus-5, default effort, 60-turn cap, x86 images under emulation on Apple Silicon).</p>
+<table>
+  <tr><th>Event</th><th>Agent runs</th><th>≈ Cost</th><th>≈ Wall time at --jobs 2</th></tr>
+  <tr><td>Seed (smoke + train + held-out)</td><td>23</td><td>$21</td><td>1 h + scoring</td></tr>
+  <tr><td>Iteration rejected at smoke</td><td>3</td><td>$1</td><td>5 min</td></tr>
+  <tr><td>Iteration that reaches train</td><td>13</td><td>$11</td><td>30 to 35 min</td></tr>
+  <tr><td>Iteration that reaches held-out</td><td>23</td><td>$21</td><td>1 h</td></tr>
+  <tr><td><b>5 iterations, typical mix</b></td><td>~80</td><td><b>≈ $75</b> ($26 to $130)</td><td>3 to 5 h</td></tr>
+  <tr><td><b>10 iterations, typical mix</b></td><td>~140</td><td><b>≈ $135</b> ($31 to $235)</td><td>6 to 10 h</td></tr>
+</table>
+<p>Plus about one mutator call per iteration (cents). Guard rejections and cache hits cost nothing.</p>
+
+<h3>9.2 Noise</h3>
+<div class="box orange">
+<ul>
+  <li><b>Ten tasks is a coarse instrument.</b> One flip moves the score by 0.1, and the same genome can flip a task between runs (the model samples). A 7/10 carries a 95% interval of roughly 35% to 93%. Use <code>--holdout-margin 0.1</code> (strictly more than one task) and re-run a champion on held-out before believing it.</li>
+  <li><b>Selection on noise.</b> Taking the best of many noisy evaluations inflates the winner's score (winner's curse). The held-out gate fights this; it does not eliminate it. A final re-evaluation on a fresh split is the honest report.</li>
+  <li><b>Contamination.</b> Frontier models reproduce some Verified gold patches verbatim. "Resolved" does not always mean "reasoned," and harness text cannot change that.</li>
+</ul>
+</div>
+
+<h3>9.3 Known limits</h3>
+<ul>
+  <li><b>Train-set leakage by design.</b> The mutator reads train failures, including hidden test names. That is the training signal. The rule against naming specific repos or tests is a prompt instruction, not an enforcement. The held-out gate is the actual protection.</li>
+  <li><b>Live reflection is self-reported.</b> In <code>--reflect</code> mode the outcome is only the agent's exit reason. Use offline reflection with verified outcomes for anything you intend to keep.</li>
+  <li><b>Fitness reads the last stage.</b> A child rejected at smoke is compared on its smoke score. That is fine for rejection, and rejected children never become parents, but don't read their fitness as a train estimate.</li>
+  <li><b>Not yet validated at scale.</b> The loop, the guards, the archive and the evaluator's parsing are covered by network-free tests. The scoring path has been checked against real Docker and swebench 5.0.2 with gold patches (2 resolved and 1 empty patch, as expected). The images are amd64, so on Apple Silicon <code>run.py</code> pre-pulls them before scoring. A genuinely unresolved instance has so far been exercised only by the test fixture, and no full evolution run against the live benchmark has been completed yet.</li>
+</ul>
+
+<!-- ───────────────────────────── 10 ───────────────────────────── -->
+<h2>10 · What comes next</h2>
+<ol>
+  <li><b>First live run</b>: the seed plus about 5 iterations on the splits above, with the champion re-run on held-out twice. Report it in <code>reports/</code> with the full ledger.</li>
+  <li><b>Bigger splits</b>: a 30-task train and 30-task held-out cut the per-flip step to 0.033, at triple the cost. The machinery does not change, only the task files.</li>
+  <li><b>Repeated evaluation</b>: score a would-be champion k times and promote on the mean, to cut variance where it matters most.</li>
+  <li><b>Outcome-grounded reflection in the loop</b>: after each train evaluation, reflect on every failure with its swebench verdict. The child then carries lessons from its own verified misses.</li>
+  <li><b>Next layers</b>: harness code (tool implementations, loop policy) in a sandbox; then curricula, meaning tasks chosen where the archive disagrees most.</li>
+</ol>
+
+<!-- ───────────────────────────── A ───────────────────────────── -->
+<h2 class="page-break">A · CLI and file reference</h2>
+
+<h3>python -m tinyorbit.evolve</h3>
+<table>
+  <tr><th style="width:18%">Command</th><th>Flags</th></tr>
+  <tr><td><code>seed OUT</code></td><td>Write the built-in harness text as an editable genome (refuses a non-empty dir)</td></tr>
+  <tr><td><code>run</code></td><td><code>--out DIR</code> (resumes if present) · <code>--seed DIR</code> · <code>--evaluator mod:factory|file.py:factory</code> · <code>--arg k=v</code> · <code>--iterations 10</code> · <code>--stages train</code> (e.g. <code>smoke:0.67,train</code>) · <code>--holdout NAME</code> · <code>--holdout-margin 0.0</code> · <code>--size-penalty 0.01</code> · <code>--islands 2</code> · <code>--rng-seed 0</code> · <code>--model claude-opus-5</code> · <code>--provider</code> · <code>--effort</code></td></tr>
+  <tr><td><code>reflect</code></td><td><code>--transcript FILE</code> · <code>--genome DIR</code> · <code>--outcome</code> · <code>--feedback</code> · <code>--source</code> · model flags</td></tr>
+  <tr><td><code>show</code></td><td><code>--out DIR</code>: candidates sorted by fitness, champion starred</td></tr>
+  <tr><td><code>report</code></td><td><code>--out DIR</code> · <code>--html FILE</code>: replay <code>events.jsonl</code> into a self-contained HTML report (story, score chart, family tree, island grids, every attempt)</td></tr>
+</table>
+
+<h3>main.py and bench/run.py</h3>
+<table>
+  <tr><th style="width:30%">Flag</th><th>Effect</th></tr>
+  <tr><td><code>--genome DIR</code> / <code>TINYORBIT_GENOME</code></td><td>Layer a genome over the defaults (both main.py and run.py)</td></tr>
+  <tr><td><code>--reflect</code> / <code>TINYORBIT_REFLECT=1</code></td><td>Print mode: reflect into the genome's lessons.md after the run</td></tr>
+  <tr><td><code>run.py --run-id ID</code></td><td>Output to <code>bench/logs/ID/</code>; reuse to resume</td></tr>
+  <tr><td><code>run.py --jobs N</code></td><td>N tasks in parallel (and N scoring workers)</td></tr>
+  <tr><td><code>run.py --score</code></td><td>Run swebench eval, write <code>scores.json</code></td></tr>
+  <tr><td><code>evolve_eval.py:make</code> args</td><td><code>jobs</code> · <code>model</code> · <code>effort</code> · <code>max_turns</code> · <code>timeout_min</code> · <code>python</code></td></tr>
+</table>
+
+<h3>Source map</h3>
+<table>
+  <tr><th style="width:30%">File</th><th>Contents</th></tr>
+  <tr><td><code>evolve/genome.py</code></td><td>Genome, whitelist, fingerprint, seed export, overlay loading, tool-description patching</td></tr>
+  <tr><td><code>evolve/reflect.py</code></td><td>Lessons format, merge/cap, transcript condensing, the reflection call</td></tr>
+  <tr><td><code>evolve/edits.py</code></td><td>SEARCH/REPLACE parsing and strict-then-fuzzy application</td></tr>
+  <tr><td><code>evolve/mutate.py</code></td><td>Mutation system prompt, context assembly, proposal parsing, <code>LLMMutator</code></td></tr>
+  <tr><td><code>evolve/evaluate.py</code></td><td><code>Evaluator</code> protocol, <code>EvalResult</code>, <code>Stage</code>, cascade, evaluator loading</td></tr>
+  <tr><td><code>evolve/archive.py</code></td><td>Candidates, MAP-Elites grid, islands, parent sampling, migration, persistence</td></tr>
+  <tr><td><code>evolve/loop.py</code></td><td>The driver: seeding, guards, fitness, promotion, ledger, checkpoints</td></tr>
+  <tr><td><code>evolve/events.py</code></td><td>Append-only <code>events.jsonl</code>, per-iteration artifacts, genome diffs</td></tr>
+  <tr><td><code>evolve/report.py</code></td><td>Replays a run directory into a self-contained HTML report</td></tr>
+  <tr><td><code>evolve/llm.py</code></td><td><code>Complete</code> seam: any provider as <code>async (system, user) → str</code>, cost tracked</td></tr>
+  <tr><td><code>evolve/__main__.py</code></td><td>CLI</td></tr>
+  <tr><td><code>bench/evolve_eval.py</code></td><td>SWE-bench evaluator: stages to splits, memoised runs, failure reports</td></tr>
+  <tr><td><code>bench/scoring.py</code></td><td>swebench output to <code>scores.json</code> (stdlib only)</td></tr>
+  <tr><td><code>bench/make_split.py</code></td><td>Reproducible, repo-stratified, disjoint split builder</td></tr>
+  <tr><td><code>tests/test_evolve.py</code>, <code>tests/test_bench_eval.py</code></td><td>31 network-free tests: overlay identity, edits, lessons, loop outcomes, resume, archive, scoring, memoisation</td></tr>
+</table>
+
+<p class="small" style="margin-top:14pt">tinyorbit is MIT-licensed. This document describes branch <code>feat/self-evolve</code> at commit 04c1d15 and later.</p>
+</body>
+</html>

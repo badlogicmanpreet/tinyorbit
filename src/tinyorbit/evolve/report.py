@@ -592,7 +592,7 @@ def status_line(run: Run) -> str:
         return (f'<div class="status done sk-box">Finished early to stay within budget: spent {money(b["spent_usd"])} '
                 f'of {money(b["budget_usd"])}, and one more attempt could have cost up to {money(b["reserve_usd"])}.</div>')
     if run.finished:
-        return '<div class="status done sk-box">Finished.</div>'
+        return ""                  # a finished run needs no banner; only live or stopped runs get one
     if run.abort:
         return (f'<div class="status live sk-box">Stopped at attempt {run.abort["iteration"]}: {esc(run.abort["reason"])}. '
                 'Rerun the same command to resume.</div>')
@@ -763,7 +763,7 @@ def render(root: Path, out_path: Path | None = None) -> str:
         return f'<div><h2><span class="n">{n}.</span>{esc(title)}</h2></div>'
 
     body = f"""
-<div class="kicker">field notes, run {esc(run.root.name)}</div>
+<div class="kicker">field notes</div>
 <h1>How the tinyorbit harness evolved</h1>
 <div class="muted">tinyorbit is a small agent SDK, a harness around a model. This page replays one evolution run
 from its {len(run.events)} logged events.</div>

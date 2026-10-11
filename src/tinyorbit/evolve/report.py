@@ -652,9 +652,6 @@ REFERENCES = [
      "Novikov et al., Google DeepMind, 2025. The design evolve follows: an LLM proposes diffs, an evaluator "
      "scores them, and an evolutionary database of programs keeps the search going.",
      "https://arxiv.org/abs/2506.13131"),
-    ("AlphaEvolve: A Gemini-powered coding agent for designing advanced algorithms",
-     "Google DeepMind blog post introducing AlphaEvolve, May 2025.",
-     "https://deepmind.google/discover/blog/alphaevolve-a-gemini-powered-coding-agent-for-designing-advanced-algorithms/"),
     ("OpenEvolve",
      "An open-source implementation of AlphaEvolve. Its island populations, MAP-Elites grid and "
      "cascade evaluation are the patterns evolve borrows; here the evolved program is the agent harness.",

@@ -616,6 +616,58 @@ def costs_table(run: Run) -> str:
     return f"<table class='costs'>{rows}</table>"
 
 
+def conclusion(run: Run) -> list[str]:
+    """Four or five plain sentences, computed from the run so they fit any run."""
+    seed, champ = run.seed, run.champion
+    if seed is None:
+        return ["The run has not measured the original harness yet, so there is nothing to conclude."]
+    score = story_section._champ_score
+    attempts = sum(1 for i in run.steps if i >= 0)
+    costs = cost_breakdown(run)
+    out: list[str] = []
+    if champ is None or champ.id == seed.id:
+        out.append(f"In {attempts} attempts, no change beat the original harness on both the practice set and the "
+                   "unseen problems, so the original stays in place.")
+        out.append("That is a useful result: it says the current harness is hard to improve with small edits, "
+                   "and it cost nothing in manual effort to find out.")
+    else:
+        holdout = (f" and from {score(run, seed.id, run.holdout)} to {score(run, champ.id, run.holdout)} on "
+                   "unseen problems" if run.holdout and champ.holdout is not None else "")
+        out.append(f"In {attempts} attempts, evolve moved the harness from {score(run, seed.id)} to "
+                   f"{score(run, champ.id)} on the practice set{holdout}, with nobody editing a file by hand.")
+        out.append(f"The winning change, {champ.id}: {champ.summary}")
+    out.append(f"The whole search cost about {money(costs['total'])}, every step is logged, and every "
+               "version can be inspected or rolled back.")
+    total = int(seed.metrics.get("total", 0))
+    if total and total <= 20:
+        out.append(f"With {total} problems per set, a gain of one or two problems can be luck, so the champion "
+                   "should be re-tested on a fresh set before it ships.")
+    out.append("Next: confirm the champion, run more generations, and let evolve reach further artifacts such "
+               "as skills and settings.")
+    return out
+
+
+REFERENCES = [
+    ("AlphaEvolve: A coding agent for scientific and algorithmic discovery",
+     "Novikov et al., Google DeepMind, 2025. The design evolve follows: an LLM proposes diffs, an evaluator "
+     "scores them, and an evolutionary database of programs keeps the search going.",
+     "https://arxiv.org/abs/2506.13131"),
+    ("AlphaEvolve: A Gemini-powered coding agent for designing advanced algorithms",
+     "Google DeepMind blog post introducing AlphaEvolve, May 2025.",
+     "https://deepmind.google/discover/blog/alphaevolve-a-gemini-powered-coding-agent-for-designing-advanced-algorithms/"),
+    ("OpenEvolve",
+     "An open-source implementation of AlphaEvolve. Its island populations, MAP-Elites grid and "
+     "cascade evaluation are the patterns evolve borrows; here the evolved program is the agent harness.",
+     "https://github.com/algorithmicsuperintelligence/openevolve"),
+]
+
+
+def references() -> str:
+    items = "".join(f'<li><a href="{esc(url)}">{esc(title)}</a><br><span class="muted">{esc(note)}</span></li>'
+                    for title, note, url in REFERENCES)
+    return f'<ol class="refs">{items}</ol>'
+
+
 CSS = """
 :root{--hand:"Bradley Hand","Segoe Print","Chalkboard SE","Comic Sans MS",cursive;--ink:#2b2b2b;--paper:#fdfbf3}
 *{box-sizing:border-box}
@@ -684,6 +736,7 @@ font:12px/1.5 "SF Mono",Menlo,Consolas,monospace;white-space:pre-wrap}
 pre.diff .add{color:#047857;background:#ecfdf5}pre.diff .del{color:#b91c1c;background:#fef2f2}
 pre.diff .hunk{color:#7c3aed}pre.diff .dh{color:#6b7280;font-weight:600}
 table.costs{border-collapse:collapse}table.costs td{padding:3px 22px 3px 0}
+.refs li{margin:8px 0}
 table.costs tr.total td{font-family:var(--hand);font-size:20px;border-top:1.5px solid #555}
 """ + story_section.CSS
 
@@ -764,7 +817,7 @@ def render(root: Path, out_path: Path | None = None) -> str:
 
     body = f"""
 <div class="kicker">field notes</div>
-<h1>How the tinyorbit harness evolved</h1>
+<h1>How the tinyorbit harness Self Evolved</h1>
 <div class="muted">tinyorbit is a small agent SDK, a harness around a model. This page replays one evolution run
 from its {len(run.events)} logged events.</div>
 {status_line(run)}
@@ -797,7 +850,9 @@ Gold: the champion. Purple: a visitor from the other island.</p>
 {timeline(run, out_path)}
 {h2(9, "Cost")}
 {costs_table(run)}
-{h2(10, "Technical appendix")}
+{h2(10, "Conclusion")}
+<section class="story">{''.join(f'<p>{esc(s)}</p>' for s in conclusion(run))}</section>
+{h2(11, "Technical appendix")}
 <p>Stages: {esc(stages) or 'none'}; promotion gate: {esc(stage_name(cfg.get('holdout') or '') or 'none')}
 (margin {cfg.get('holdout_margin', 0)}); size penalty {cfg.get('size_penalty', '?')} per 1,000 chars;
 {cfg.get('num_islands', '?')} islands, migration every {cfg.get('migration_interval', '?')} attempts;
@@ -806,6 +861,8 @@ Gold: the champion. Purple: a visitor from the other island.</p>
 <code>events.jsonl</code> (every step), <code>iterations/NNNN/</code> (editor prompt, answer, diff),
 <code>genomes/</code> (every version), <code>champion/</code>.</p>
 <details><summary>run configuration</summary><pre>{esc(tech)}</pre></details>
+{h2(12, "References")}
+{references()}
 """
     rough_js = ROUGH_JS.read_text() if ROUGH_JS.is_file() else ""
     page = (f'<!doctype html><html lang="en"><head><meta charset="utf-8">{refresh}'
